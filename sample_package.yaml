@@ -1,0 +1,59 @@
+defaults:
+  media_player_id: 
+  media_player_type: 
+
+  sendspin_instance: 1
+
+  client_id: "${name}-${sendspin_instance}"
+  client_name: "${friendly_name} ${media_player_name}"
+  sendspin_websocket_port: ${8930 + sendspin_instance}
+  sendspin_httpd_ctrl_port: ${32770 + sendspin_instance}
+
+  initial_static_delay: 0ms
+  static_delay_adjustable: true
+  buffer_size: 200000
+  task_stack_in_psram: true
+
+  sendspin_mc_hub_id: "sendspin_mc_hub_${sendspin_instance}"
+  sendspin_mc_source_id: "sendspin_mc_source_${sendspin_instance}"
+  sendspin_mc_media_player_id: "mp_sendspin_mc_${sendspin_instance}"
+
+  use_sendspin_group_control_media_player: false
+  package_sendspin_group_control:
+    media_player:
+      - platform: sendspin_mc
+        id: mp_sendspin_mc_group_control_${sendspin_instance}
+        name: ${media_player_name} Group Control
+        sendspin_mc_id: ${sendspin_mc_hub_id}
+        internal: false
+
+external_components:
+  - source: github://jb1228/esphome-sendspin-multi-client@main
+    components: [ sendspin_mc ]
+
+packages:
+  - ${package_sendspin_group_control if use_sendspin_group_control_media_player else {}}
+
+sendspin_mc:
+  - id: ${sendspin_mc_hub_id}
+    client_id: ${client_id}
+    client_name: ${client_name}
+    server_port: ${sendspin_websocket_port}
+    control_port: ${sendspin_httpd_ctrl_port}
+    task_stack_in_psram: ${task_stack_in_psram}
+
+media_source:
+  - platform: sendspin_mc
+    id: ${sendspin_mc_source_id}
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    task_stack_in_psram: ${task_stack_in_psram}
+    static_delay_adjustable: ${static_delay_adjustable}
+    initial_static_delay: ${initial_static_delay}
+    buffer_size: ${buffer_size}
+
+
+media_player:
+  - id: !extend ${media_player_id}
+    media_pipeline:
+      sources:
+        - ${sendspin_mc_source_id}
