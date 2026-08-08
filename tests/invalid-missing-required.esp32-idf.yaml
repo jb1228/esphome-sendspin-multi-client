@@ -1,0 +1,5 @@
+<<: !include common.yaml
+
+sendspin_mc:
+  id: sendspin_mc_missing_fields
+  client_id: sendspin-mc-missing-fields

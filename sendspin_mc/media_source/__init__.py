@@ -3,9 +3,7 @@ import esphome.codegen as cg
 from esphome.components import media_source, psram
 import esphome.config_validation as cv
 from esphome.const import (
-    CONF_BITS_PER_SAMPLE,
     CONF_BUFFER_SIZE,
-    CONF_CHANNELS,
     CONF_ID,
     CONF_SAMPLE_RATE,
     CONF_TASK_STACK_IN_PSRAM,
@@ -28,9 +26,9 @@ from .. import (
 
 AUTO_LOAD = ["audio"]
 CODEOWNERS = ["@jb1228"]
-DEPENDENCIES = ["sendspin_mc"]
 
 CONF_STATIC_DELAY_ADJUSTABLE = "static_delay_adjustable"
+
 
 SendspinMcMediaSource = sendspin_mc_ns.class_(
     "SendspinMcMediaSource",
@@ -58,8 +56,6 @@ def _register(config: ConfigType) -> ConfigType:
         hub_id,
         {
             CONF_SAMPLE_RATE: config[CONF_SAMPLE_RATE],
-            CONF_BITS_PER_SAMPLE: config[CONF_BITS_PER_SAMPLE],
-            CONF_CHANNELS: config[CONF_CHANNELS],
             CONF_BUFFER_SIZE: config[CONF_BUFFER_SIZE],
             CONF_INITIAL_STATIC_DELAY: config[CONF_INITIAL_STATIC_DELAY],
             CONF_FIXED_DELAY: config[CONF_FIXED_DELAY],
@@ -90,8 +86,6 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_SAMPLE_RATE, default=48000): cv.int_range(
                 min=16000, max=96000
             ),
-            cv.Optional(CONF_BITS_PER_SAMPLE, default=16): cv.one_of(16, int=True),
-            cv.Optional(CONF_CHANNELS, default=2): cv.int_range(min=1, max=2),
             cv.Optional(CONF_DECODE_MEMORY): cv.one_of(*MEMORY_LOCATIONS, lower=True),
         }
     ),
@@ -105,14 +99,15 @@ async def to_code(config: ConfigType) -> None:
     await cg.register_component(var, config)
     await media_source.register_media_source(var, config)
 
-    sendspin_hub = await cg.get_variable(config[CONF_SENDSPIN_MC_ID])
-    await cg.register_parented(var, sendspin_hub)
+    sendspin_mc_hub = await cg.get_variable(config[CONF_SENDSPIN_MC_ID])
+    await cg.register_parented(var, sendspin_mc_hub)
 
-    cg.add(sendspin_hub.set_listener(var))
+    cg.add(sendspin_mc_hub.set_listener(var))
+
     cg.add(var.set_static_delay_adjustable(config[CONF_STATIC_DELAY_ADJUSTABLE]))
 
 
-SENDSPIN_MC_MEDIA_SOURCE_ACTION_SCHEMA = automation.maybe_simple_id(
+SENDSPIN_MEDIA_SOURCE_ACTION_SCHEMA = automation.maybe_simple_id(
     cv.Schema(
         {
             cv.GenerateID(): cv.use_id(SendspinMcMediaSource),
@@ -124,16 +119,16 @@ SENDSPIN_MC_MEDIA_SOURCE_ACTION_SCHEMA = automation.maybe_simple_id(
 @automation.register_action(
     "sendspin_mc.media_source.enable_static_delay_adjustment",
     EnableStaticDelayAdjustmentAction,
-    SENDSPIN_MC_MEDIA_SOURCE_ACTION_SCHEMA,
+    SENDSPIN_MEDIA_SOURCE_ACTION_SCHEMA,
     synchronous=True,
 )
 @automation.register_action(
     "sendspin_mc.media_source.disable_static_delay_adjustment",
     DisableStaticDelayAdjustmentAction,
-    SENDSPIN_MC_MEDIA_SOURCE_ACTION_SCHEMA,
+    SENDSPIN_MEDIA_SOURCE_ACTION_SCHEMA,
     synchronous=True,
 )
-async def sendspin_mc_static_delay_adjustment_to_code(
+async def sendspin_static_delay_adjustment_to_code(
     config: ConfigType,
     action_id: ID,
     template_arg: cg.TemplateArguments,

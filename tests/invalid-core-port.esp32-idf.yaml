@@ -1,0 +1,10 @@
+<<: !include common.yaml
+
+sendspin:
+
+sendspin_mc:
+  id: sendspin_mc_core_collision
+  client_id: sendspin-mc-core-collision
+  client_name: Sendspin MC Core Collision
+  server_port: 8928
+  control_port: 32771

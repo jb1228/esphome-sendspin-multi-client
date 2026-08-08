@@ -1,0 +1,28 @@
+<<: !include common.yaml
+
+sendspin:
+  id: sendspin_core
+
+sendspin_mc:
+  id: sendspin_mc_metadata
+  client_id: sendspin-mc-with-core
+  client_name: Sendspin MC With Core
+  server_port: 8931
+  control_port: 32771
+
+media_source:
+  - platform: sendspin
+    id: sendspin_core_source
+    sendspin_id: sendspin_core
+
+sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_metadata
+    name: Sendspin MC Duration With Core
+    type: track_duration
+
+text_sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_metadata
+    name: Sendspin MC Title With Core
+    type: title

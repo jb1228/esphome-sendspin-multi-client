@@ -23,7 +23,9 @@ SendspinMcMediaPlayer = sendspin_mc_ns.class_(
 
 
 def _request_roles(config: ConfigType) -> ConfigType:
+    """Request the necessary Sendspin roles for the media player."""
     request_controller_support(config[CONF_SENDSPIN_MC_ID])
+
     return config
 
 

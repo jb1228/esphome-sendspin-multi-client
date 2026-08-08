@@ -1,0 +1,8 @@
+<<: !include common.yaml
+
+sendspin_mc:
+  id: sendspin_mc_invalid_mdns
+  client_id: sendspin-mc-invalid-mdns
+  client_name: This Sendspin MC client name is deliberately longer than sixty-three bytes
+  server_port: 8931
+  control_port: 32771

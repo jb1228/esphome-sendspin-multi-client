@@ -1,0 +1,8 @@
+<<: !include common.yaml
+
+sendspin_mc:
+  id: sendspin_mc_invalid_uri
+  client_id: invalid/client
+  client_name: Sendspin MC Invalid URI
+  server_port: 8931
+  control_port: 32771

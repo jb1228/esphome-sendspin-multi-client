@@ -1,0 +1,26 @@
+<<: !include common.yaml
+
+sendspin_mc:
+  id: sendspin_mc_implicit
+  client_id: sendspin-mc-implicit
+  client_name: Sendspin MC Implicit
+  server_port: 8931
+  control_port: 32771
+
+media_source:
+  - platform: sendspin_mc
+    id: sendspin_mc_source_implicit
+
+media_player:
+  - platform: sendspin_mc
+    name: Sendspin MC Implicit Controller
+
+sensor:
+  - platform: sendspin_mc
+    name: Sendspin MC Implicit Duration
+    type: track_duration
+
+text_sensor:
+  - platform: sendspin_mc
+    name: Sendspin MC Implicit Title
+    type: title

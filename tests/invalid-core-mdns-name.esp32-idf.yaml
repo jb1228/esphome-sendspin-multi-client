@@ -1,0 +1,10 @@
+<<: !include common.yaml
+
+sendspin:
+
+sendspin_mc:
+  id: sendspin_mc_core_mdns_collision
+  client_id: sendspin-mc-core-mdns-collision
+  client_name: sendspin-mc-test
+  server_port: 8931
+  control_port: 32771

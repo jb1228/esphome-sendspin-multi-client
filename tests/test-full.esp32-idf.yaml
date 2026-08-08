@@ -1,0 +1,72 @@
+<<: !include common.yaml
+
+sendspin_mc:
+  id: sendspin_mc_full
+  client_id: sendspin-mc-full
+  client_name: Sendspin MC Full
+  server_port: 8931
+  control_port: 32771
+  task_stack_in_psram: true
+
+media_source:
+  - platform: sendspin_mc
+    id: sendspin_mc_source_full
+    sendspin_mc_id: sendspin_mc_full
+    task_stack_in_psram: true
+    buffer_size: 500000
+    initial_static_delay: 5ms
+    static_delay_adjustable: true
+    fixed_delay: 480us
+    sample_rate: 48000
+    decode_memory: internal
+
+media_player:
+  - platform: sendspin_mc
+    id: sendspin_mc_controller_full
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin MC Controller
+    volume_increment: 5%
+
+sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Track Progress
+    type: track_progress
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Track Duration
+    type: track_duration
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Year
+    type: year
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Track
+    type: track
+
+text_sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Title
+    type: title
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Artist
+    type: artist
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Album
+    type: album
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    name: Sendspin Album Artist
+    type: album_artist
+
+button:
+  - platform: template
+    name: Exercise Sendspin MC Actions
+    on_press:
+      - sendspin_mc.switch: sendspin_mc_full
+      - sendspin_mc.media_source.enable_static_delay_adjustment: sendspin_mc_source_full
+      - sendspin_mc.media_source.disable_static_delay_adjustment: sendspin_mc_source_full

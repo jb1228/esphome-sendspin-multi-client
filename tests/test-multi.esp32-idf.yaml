@@ -1,0 +1,47 @@
+<<: !include common.yaml
+
+sendspin_mc:
+  - id: sendspin_mc_player
+    client_id: sendspin-mc-player
+    client_name: Sendspin MC Player
+    server_port: 8931
+    control_port: 32771
+  - id: sendspin_mc_metadata
+    client_id: sendspin-mc-metadata
+    client_name: Sendspin MC Metadata
+    server_port: 8932
+    control_port: 32772
+  - id: sendspin_mc_controller
+    client_id: sendspin-mc-controller
+    client_name: Sendspin MC Controller
+    server_port: 8933
+    control_port: 32773
+
+media_source:
+  - platform: sendspin_mc
+    id: sendspin_mc_source_player
+    sendspin_mc_id: sendspin_mc_player
+
+media_player:
+  - platform: sendspin_mc
+    id: sendspin_mc_group_controller
+    sendspin_mc_id: sendspin_mc_controller
+    name: Sendspin MC Group Controller
+
+sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_metadata
+    name: Sendspin MC Metadata Duration
+    type: track_duration
+
+text_sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_metadata
+    name: Sendspin MC Metadata Title
+    type: title
+
+button:
+  - platform: template
+    name: Switch Sendspin MC Controller
+    on_press:
+      - sendspin_mc.switch: sendspin_mc_controller

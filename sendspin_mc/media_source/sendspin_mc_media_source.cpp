@@ -19,16 +19,17 @@ void SendspinMcMediaSource::setup() {
     return;
   }
 
+  // Push cached states to player role. They may have been set before setup() ran.
   this->player_role_->update_volume(std::roundf(this->cached_volume_ * 100.0f));
   this->player_role_->update_muted(this->cached_muted_);
   this->player_role_->set_static_delay_adjustable(this->static_delay_adjustable_);
 }
 
 void SendspinMcMediaSource::dump_config() {
-  ESP_LOGCONFIG(TAG, "Sendspin MC Media Source: static_delay_adjustable=%s",
-                YESNO(this->static_delay_adjustable_));
+  ESP_LOGCONFIG(TAG, "Sendspin Media Source: static_delay_adjustable=%s", YESNO(this->static_delay_adjustable_));
 }
 
+// THREAD CONTEXT: Main loop (invoked from ESPHome actions / config)
 void SendspinMcMediaSource::set_static_delay_adjustable(bool adjustable) {
   this->static_delay_adjustable_ = adjustable;
   if (this->player_role_) {
@@ -36,10 +37,13 @@ void SendspinMcMediaSource::set_static_delay_adjustable(bool adjustable) {
   }
 }
 
+// --- MediaSource interface ---
+
 bool SendspinMcMediaSource::can_handle(const std::string &uri) const {
-  return uri == this->parent_->get_current_source_uri();
+  return uri.starts_with(this->parent_->get_media_source_uri(""));
 }
 
+// THREAD CONTEXT: Main loop (media_source.h documents play_uri as main-loop only)
 bool SendspinMcMediaSource::play_uri(const std::string &uri) {
   if (!this->is_ready() || this->is_failed() || !this->has_listener()) {
     return false;
@@ -50,27 +54,46 @@ bool SendspinMcMediaSource::play_uri(const std::string &uri) {
     return false;
   }
 
-  if (uri != this->parent_->get_current_source_uri()) {
+  const std::string uri_prefix = this->parent_->get_media_source_uri("");
+  if (!uri.starts_with(uri_prefix)) {
     ESP_LOGE(TAG, "Invalid URI for %s: '%s'", this->parent_->get_client_id().c_str(), uri.c_str());
     return false;
   }
 
+  std::string sendspin_target = uri.substr(uri_prefix.size());
+
+  if (sendspin_target.empty()) {
+    ESP_LOGE(TAG, "Invalid URI: '%s'", uri.c_str());
+    return false;
+  }
+
+  ESP_LOGD(TAG, "sendspin target: %s", sendspin_target.c_str());
+
+  if (sendspin_target != "current") {
+    // Connect to a new server as a websocket client
+    this->parent_->connect_to_server("ws://" + sendspin_target);
+  }
+
+  // Tell the orchestrator we're now playing so it routes audio output from us
   this->pending_start_ = false;
   this->set_state_(media_source::MediaSourceState::PLAYING);
 
   return true;
 }
 
+// THREAD CONTEXT: Main loop (media_source.h documents handle_command as main-loop only)
 void SendspinMcMediaSource::handle_command(media_source::MediaSourceCommand command) {
   switch (command) {
     case media_source::MediaSourceCommand::STOP: {
       if (!this->pending_start_) {
+        // Ignore stop commands if we have a pending start, since the orchestrator may send a stop command before
+        // play_uri
         ESP_LOGD(TAG, "Received STOP command, updating Sendspin state to EXTERNAL_SOURCE");
         this->parent_->update_state(sendspin::SendspinClientState::EXTERNAL_SOURCE);
       }
       break;
     }
-    case media_source::MediaSourceCommand::PLAY:
+    case media_source::MediaSourceCommand::PLAY:  // NOLINT(bugprone-branch-clone)
       this->parent_->send_client_command(sendspin::SendspinControllerCommand::PLAY, std::nullopt, std::nullopt);
       break;
     case media_source::MediaSourceCommand::PAUSE:
@@ -102,6 +125,7 @@ void SendspinMcMediaSource::handle_command(media_source::MediaSourceCommand comm
   }
 }
 
+// THREAD CONTEXT: Main loop (orchestrator -> source notification)
 void SendspinMcMediaSource::notify_volume_changed(float volume) {
   this->cached_volume_ = volume;
   if (this->player_role_) {
@@ -109,6 +133,7 @@ void SendspinMcMediaSource::notify_volume_changed(float volume) {
   }
 }
 
+// THREAD CONTEXT: Main loop (orchestrator -> source notification)
 void SendspinMcMediaSource::notify_mute_changed(bool is_muted) {
   this->cached_muted_ = is_muted;
   if (this->player_role_) {
@@ -116,18 +141,24 @@ void SendspinMcMediaSource::notify_mute_changed(bool is_muted) {
   }
 }
 
+// THREAD CONTEXT: Speaker playback callback thread (forwarded from the speaker).
+// PlayerRole::notify_audio_played() is documented as thread-safe for this use.
 void SendspinMcMediaSource::notify_audio_played(uint32_t frames, int64_t timestamp) {
   if (this->player_role_) {
     this->player_role_->notify_audio_played(frames, timestamp);
   }
 }
 
+// --- Sendspin PlayerRoleListener overrides ---
+
+// THREAD CONTEXT: Sendspin sync task background thread. May block up to timeout_ms.
 size_t SendspinMcMediaSource::on_audio_write(uint8_t *data, size_t length, uint32_t timeout_ms) {
   if (!this->has_listener() || (this->get_state() != media_source::MediaSourceState::PLAYING)) {
     vTaskDelay(pdMS_TO_TICKS(timeout_ms));
     return 0;
   }
 
+  // PlayerRole::get_current_stream_params() is safe to call from the sync task.
   auto &params = this->player_role_->get_current_stream_params();
   if (!params.bit_depth.has_value() || !params.channels.has_value() || !params.sample_rate.has_value()) {
     vTaskDelay(pdMS_TO_TICKS(timeout_ms));
@@ -138,23 +169,30 @@ size_t SendspinMcMediaSource::on_audio_write(uint8_t *data, size_t length, uint3
   return this->write_output(data, length, timeout_ms, stream_info);
 }
 
+// THREAD CONTEXT: Main loop (PlayerRoleListener lifecycle callback)
 void SendspinMcMediaSource::on_stream_start() {
   this->parent_->update_state(sendspin::SendspinClientState::SYNCHRONIZED);
 
   if (!this->pending_start_) {
+    // Dedup rapid on_stream_start() calls
     this->pending_start_ = true;
+    // Request the orchestrator to start this source
     this->request_play_uri_(this->parent_->get_current_source_uri());
   }
 }
 
+// THREAD CONTEXT: Main loop (PlayerRoleListener lifecycle callback)
 void SendspinMcMediaSource::on_stream_end() {
   if (this->get_state() != media_source::MediaSourceState::IDLE) {
+    // Only set to IDLE if we were previously in a non-IDLE state, to avoid duplicate state changes
     this->set_state_(media_source::MediaSourceState::IDLE);
   }
 }
 
+// THREAD CONTEXT: Main loop (PlayerRoleListener callback)
 void SendspinMcMediaSource::on_volume_changed(uint8_t volume) { this->request_volume_(volume / 100.0f); }
 
+// THREAD CONTEXT: Main loop (PlayerRoleListener callback)
 void SendspinMcMediaSource::on_mute_changed(bool muted) { this->request_mute_(muted); }
 
 }  // namespace esphome::sendspin_mc

@@ -18,7 +18,10 @@ namespace esphome::sendspin_mc {
 
 static const char *const TAG = "sendspin_mc.media_player";
 
+// THREAD CONTEXT: Main loop. The callbacks registered here also fire on the main loop,
+// since SendspinMcHub dispatches group updates and controller state from client_->loop().
 void SendspinMcMediaPlayer::setup() {
+  // Register for group updates to sync playback state
   this->parent_->add_group_update_callback([this](const sendspin::GroupUpdateObject &group_obj) {
     if (group_obj.playback_state.has_value()) {
       media_player::MediaPlayerState new_state;
@@ -49,13 +52,17 @@ void SendspinMcMediaPlayer::setup() {
     }
   });
 
+  // Publish an initial state
   this->state = media_player::MEDIA_PLAYER_STATE_IDLE;
   this->publish_state();
 }
 
+// THREAD CONTEXT: Main loop (invoked by the media_player framework)
 media_player::MediaPlayerTraits SendspinMcMediaPlayer::get_traits() {
   auto traits = media_player::MediaPlayerTraits();
 
+  // By default, the base media player always enables these traits, but they are not actually supported by this media
+  // player
   traits.clear_feature_flags(media_player::MediaPlayerEntityFeature::PLAY_MEDIA |
                              media_player::MediaPlayerEntityFeature::BROWSE_MEDIA |
                              media_player::MediaPlayerEntityFeature::MEDIA_ANNOUNCE);
@@ -65,11 +72,17 @@ media_player::MediaPlayerTraits SendspinMcMediaPlayer::get_traits() {
       media_player::MediaPlayerEntityFeature::STOP | media_player::MediaPlayerEntityFeature::VOLUME_STEP |
       media_player::MediaPlayerEntityFeature::VOLUME_SET | media_player::MediaPlayerEntityFeature::VOLUME_MUTE);
 
+  // NEXT_TRACK, PREVIOUS_TRACK, SHUFFLE_SET, and REPEAT_SET are intentionally not advertised: the ESPHome native API
+  // does not implement the corresponding media player commands, so Home Assistant cannot actually send them even if
+  // we expose the capability. They remain accessible via ESPHome YAML automations.
+
   return traits;
 }
 
+// THREAD CONTEXT: Main loop (invoked by the media_player framework)
 void SendspinMcMediaPlayer::control(const media_player::MediaPlayerCall &call) {
   if (!this->is_ready()) {
+    // Ignore any commands sent before the media player is setup
     return;
   }
 
@@ -145,7 +158,7 @@ void SendspinMcMediaPlayer::control(const media_player::MediaPlayerCall &call) {
 }
 
 void SendspinMcMediaPlayer::dump_config() {
-  ESP_LOGCONFIG(TAG, "Sendspin MC Media Player: volume_increment=%.2f", this->volume_increment_);
+  ESP_LOGCONFIG(TAG, "Sendspin Media Player: volume_increment=%.2f", this->volume_increment_);
 }
 
 }  // namespace esphome::sendspin_mc

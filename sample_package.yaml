@@ -1,6 +1,6 @@
 defaults:
-  media_player_id: 
-  media_player_type: 
+  media_player_id:
+  media_player_name:
 
   sendspin_instance: 1
 
@@ -9,6 +9,7 @@ defaults:
   sendspin_websocket_port: ${8930 + sendspin_instance}
   sendspin_httpd_ctrl_port: ${32770 + sendspin_instance}
 
+  fixed_delay: 0us
   initial_static_delay: 0ms
   static_delay_adjustable: true
   buffer_size: 200000
@@ -16,23 +17,11 @@ defaults:
 
   sendspin_mc_hub_id: "sendspin_mc_hub_${sendspin_instance}"
   sendspin_mc_source_id: "sendspin_mc_source_${sendspin_instance}"
-  sendspin_mc_media_player_id: "mp_sendspin_mc_${sendspin_instance}"
-
-  use_sendspin_group_control_media_player: false
-  package_sendspin_group_control:
-    media_player:
-      - platform: sendspin_mc
-        id: mp_sendspin_mc_group_control_${sendspin_instance}
-        name: ${media_player_name} Group Control
-        sendspin_mc_id: ${sendspin_mc_hub_id}
-        internal: false
+  sendspin_mc_controller_id: "mp_sendspin_mc_${sendspin_instance}"
 
 external_components:
   - source: github://jb1228/esphome-sendspin-multi-client@main
-    components: [ sendspin_mc ]
-
-packages:
-  - ${package_sendspin_group_control if use_sendspin_group_control_media_player else {}}
+    components: [sendspin_mc]
 
 sendspin_mc:
   - id: ${sendspin_mc_hub_id}
@@ -49,11 +38,53 @@ media_source:
     task_stack_in_psram: ${task_stack_in_psram}
     static_delay_adjustable: ${static_delay_adjustable}
     initial_static_delay: ${initial_static_delay}
+    fixed_delay: ${fixed_delay}
     buffer_size: ${buffer_size}
 
-
 media_player:
+  - platform: sendspin_mc
+    id: ${sendspin_mc_controller_id}
+    name: ${media_player_name} Group Control
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    internal: false
+
   - id: !extend ${media_player_id}
     media_pipeline:
       sources:
         - ${sendspin_mc_source_id}
+
+sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Track Progress
+    type: track_progress
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Track Duration
+    type: track_duration
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Year
+    type: year
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Track
+    type: track
+
+text_sensor:
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Title
+    type: title
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Artist
+    type: artist
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Album
+    type: album
+  - platform: sendspin_mc
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: ${media_player_name} Album Artist
+    type: album_artist

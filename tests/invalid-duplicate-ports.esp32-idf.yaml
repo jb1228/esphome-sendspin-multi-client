@@ -1,0 +1,13 @@
+<<: !include common.yaml
+
+sendspin_mc:
+  - id: sendspin_mc_one
+    client_id: sendspin-mc-one
+    client_name: Sendspin MC One
+    server_port: 8931
+    control_port: 32771
+  - id: sendspin_mc_two
+    client_id: sendspin-mc-two
+    client_name: Sendspin MC Two
+    server_port: 32771
+    control_port: 32772
