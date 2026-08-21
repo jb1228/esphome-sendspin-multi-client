@@ -346,7 +346,7 @@ async def to_code(config: ConfigType) -> None:
         psram.request_external_task_stack()
 
     # sendspin-cpp library
-    esp32.add_idf_component(name="sendspin/sendspin-cpp", ref="0.7.0")
+    esp32.add_idf_component(name="sendspin/sendspin-cpp", ref="0.7.2")
 
     component_data = _get_all_data()
     if not component_data.sdkconfig_job_scheduled:
