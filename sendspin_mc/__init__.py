@@ -33,6 +33,7 @@ CONF_INITIAL_STATIC_DELAY = "initial_static_delay"
 CONF_FIXED_DELAY = "fixed_delay"
 CONF_DECODE_MEMORY = "decode_memory"
 CONF_SERVER_PORT = "server_port"
+# Both components share one library; this setting allows matching native's version.
 CONF_SENDSPIN_CPP_REF = "sendspin_cpp_ref"
 
 DEFAULT_SENDSPIN_CPP_REF = "0.8.0"
@@ -145,8 +146,8 @@ def _get_codegen_data(hub_id: ID) -> SendspinMcConfiguration:
     if implicit is None or implicit is data:
         return data
 
-    # ESPHome only resolves an omitted parent ID when there is exactly one matching hub.
-    # Merge that pre-ID-pass bucket into the resolved hub without changing multi-hub behavior.
+    # TEMPORARY DEVIATION: Merge pre-ID-pass role requests for an implicit single-hub parent.
+    # Revisit when native validation can associate these requests directly; see DEVIATIONS.md.
     if len(CORE.config.get(DOMAIN, [])) == 1:
         data.artwork_support |= implicit.artwork_support
         data.controller_support |= implicit.controller_support
@@ -332,6 +333,8 @@ async def sendspin_switch_to_code(
     return var
 
 
+# TEMPORARY DEVIATION: Reconcile shared role flags after native codegen to preserve MC roles.
+# Revisit when native/shared codegen aggregates all clients' requirements; see DEVIATIONS.md.
 @coroutine_with_priority(CoroPriority.FINAL)
 async def _finalize_sendspin_sdkconfig() -> None:
     """Reconcile shared sendspin-cpp Kconfig flags after core and MC codegen."""

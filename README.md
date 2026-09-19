@@ -27,6 +27,19 @@ numeric sensors, and text sensors.
 No additional playback, metadata, or controller behavior is added beyond what
 is needed for multiple clients.
 
+MC and native Sendspin share one `sendspin/sendspin-cpp` library and must
+reference the same version. Use `sendspin_cpp_ref` to match the version used by
+native Sendspin. All MC hubs must agree on that
+version; when native Sendspin is present, match its dependency version as well.
+The MC-hub agreement is validated; agreement with native is currently the
+configuration author's responsibility.
+
+### Implementation differences
+
+- Each client registers its own named mDNS service.
+- Hubs initialize after mDNS, followed by their child components.
+- Shared library role flags account for both MC and native clients.
+
 ## Installation
 
 ```yaml

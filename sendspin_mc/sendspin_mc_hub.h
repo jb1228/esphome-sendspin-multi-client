@@ -36,7 +36,8 @@ namespace esphome::sendspin_mc {
 /// without each subcomponent having to pick a priority independently. Children run
 /// one step later than hub so they can assume hub's setup() has already completed.
 namespace sendspin_mc_priority {
-// Each hub adds its own mDNS service, so it must run after ESPHome's mDNS component.
+// TEMPORARY DEVIATION: Set up after mDNS so each hub can register its own service.
+// Revisit this ordering when using native-managed per-instance discovery; see DEVIATIONS.md.
 inline constexpr float HUB = esphome::setup_priority::AFTER_CONNECTION - 1.0f;
 inline constexpr float CHILD = HUB - 1.0f;
 }  // namespace sendspin_mc_priority

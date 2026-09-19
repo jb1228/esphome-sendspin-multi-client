@@ -120,6 +120,8 @@ sendspin::SendspinClientConfig SendspinMcHub::build_client_config_() {
   return config;
 }
 
+// TEMPORARY DEVIATION: Register named instances directly because native manages one service.
+// Replace when native mDNS can manage each instance's lifecycle independently; see DEVIATIONS.md.
 void SendspinMcHub::register_mdns_service_() {
   mdns_txt_item_t txt_records[] = {
       {(char *) "path", (char *) SENDSPIN_PATH},
