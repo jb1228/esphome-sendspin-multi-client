@@ -10,8 +10,7 @@
 namespace esphome::sendspin_mc {
 
 #ifdef USE_SENDSPIN_MC_CONTROLLER
-template<typename... Ts>
-class SendspinMcSwitchCommandAction final : public Action<Ts...>, public Parented<SendspinMcHub> {
+template<typename... Ts> class SendspinMcSwitchCommandAction final : public Action<Ts...>, public Parented<SendspinMcHub> {
  public:
   void play(const Ts &...x) override {
     // Clear any EXTERNAL_SOURCE state so the switch command is followed

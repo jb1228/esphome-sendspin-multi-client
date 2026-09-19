@@ -1,0 +1,8 @@
+<<: !include common.yaml
+sendspin_mc:
+  id: invalid_info
+  client_id: invalid-info
+  client_name: Invalid Info
+  server_port: 8931
+  control_port: 32771
+  manufacturer: ""

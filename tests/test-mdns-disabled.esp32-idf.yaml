@@ -1,0 +1,4 @@
+<<: !include test-implicit-parent.esp32-idf.yaml
+
+mdns:
+  disabled: true

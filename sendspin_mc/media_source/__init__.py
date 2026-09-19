@@ -1,7 +1,6 @@
-from esphome import automation
 import esphome.codegen as cg
-from esphome.components import media_source, psram
 import esphome.config_validation as cv
+from esphome.components import media_source, psram
 from esphome.const import (
     CONF_BUFFER_SIZE,
     CONF_ID,
@@ -12,12 +11,19 @@ from esphome.core import ID
 from esphome.cpp_generator import MockObj, TemplateArgsType
 from esphome.types import ConfigType
 
+from esphome import automation
+
 from .. import (
+    CODEC_OPUS,
+    CODECS,
+    CONF_CODECS,
     CONF_DECODE_MEMORY,
     CONF_FIXED_DELAY,
     CONF_INITIAL_STATIC_DELAY,
     CONF_SENDSPIN_MC_ID,
+    DEFAULT_CODECS,
     MEMORY_LOCATIONS,
+    OPUS_SAMPLE_RATE,
     SendspinMcHub,
     register_player_config,
     request_controller_support,
@@ -49,12 +55,33 @@ DisableStaticDelayAdjustmentAction = sendspin_mc_ns.class_(
 )
 
 
+def _resolve_codecs(config: ConfigType) -> ConfigType:
+    """Validate the codec preference list, filling in the default when it is not set."""
+    sample_rate = config[CONF_SAMPLE_RATE]
+    if (codecs := config.get(CONF_CODECS)) is None:
+        config[CONF_CODECS] = [
+            codec
+            for codec in DEFAULT_CODECS
+            if codec != CODEC_OPUS or sample_rate == OPUS_SAMPLE_RATE
+        ]
+        return config
+
+    if len(set(codecs)) != len(codecs):
+        raise cv.Invalid("Each codec may only be listed once", path=[CONF_CODECS])
+    if CODEC_OPUS in codecs and sample_rate != OPUS_SAMPLE_RATE:
+        raise cv.Invalid(
+            f"Codec '{CODEC_OPUS}' requires a {CONF_SAMPLE_RATE} of {OPUS_SAMPLE_RATE}",
+            path=[CONF_CODECS],
+        )
+    return config
+
+
 def _register(config: ConfigType) -> ConfigType:
-    hub_id = config[CONF_SENDSPIN_MC_ID]
-    request_controller_support(hub_id)
+    request_controller_support(config[CONF_SENDSPIN_MC_ID])
     register_player_config(
-        hub_id,
+        config[CONF_SENDSPIN_MC_ID],
         {
+            CONF_CODECS: config[CONF_CODECS],
             CONF_SAMPLE_RATE: config[CONF_SAMPLE_RATE],
             CONF_BUFFER_SIZE: config[CONF_BUFFER_SIZE],
             CONF_INITIAL_STATIC_DELAY: config[CONF_INITIAL_STATIC_DELAY],
@@ -87,9 +114,13 @@ CONFIG_SCHEMA = cv.All(
                 min=16000, max=96000
             ),
             cv.Optional(CONF_DECODE_MEMORY): cv.one_of(*MEMORY_LOCATIONS, lower=True),
+            cv.Optional(CONF_CODECS): cv.All(
+                cv.ensure_list(cv.enum(CODECS, lower=True)), cv.Length(min=1)
+            ),
         }
     ),
     cv.only_on_esp32,
+    _resolve_codecs,
     _register,
 )
 
@@ -99,10 +130,10 @@ async def to_code(config: ConfigType) -> None:
     await cg.register_component(var, config)
     await media_source.register_media_source(var, config)
 
-    sendspin_mc_hub = await cg.get_variable(config[CONF_SENDSPIN_MC_ID])
-    await cg.register_parented(var, sendspin_mc_hub)
+    sendspin_hub = await cg.get_variable(config[CONF_SENDSPIN_MC_ID])
+    await cg.register_parented(var, sendspin_hub)
 
-    cg.add(sendspin_mc_hub.set_listener(var))
+    cg.add(sendspin_hub.set_listener(var))
 
     cg.add(var.set_static_delay_adjustable(config[CONF_STATIC_DELAY_ADJUSTABLE]))
 

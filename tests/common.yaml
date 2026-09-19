@@ -1,5 +1,8 @@
 esphome:
   name: sendspin-mc-test
+  project:
+    name: fixtures.sendspin
+    version: test-project
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -20,3 +23,6 @@ external_components:
       type: local
       path: ..
     components: [sendspin_mc]
+
+# Images are exercised without a physical display in these build fixtures.
+display: []

@@ -24,3 +24,16 @@ text_sensor:
   - platform: sendspin_mc
     name: Sendspin MC Implicit Title
     type: title
+
+switch:
+  - platform: sendspin_mc
+    id: implicit_enabled
+    name: Implicit Enabled
+
+image:
+  - platform: sendspin_mc
+    id: implicit_art
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: implicit_current}

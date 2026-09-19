@@ -4,16 +4,60 @@ sendspin:
   id: sendspin_core
 
 sendspin_mc:
-  id: sendspin_mc_metadata
-  client_id: sendspin-mc-with-core
-  client_name: Sendspin MC With Core
-  server_port: 8931
-  control_port: 32771
+  - id: sendspin_mc_metadata
+    client_id: sendspin-mc-with-core
+    client_name: Sendspin MC With Core
+    server_port: 8931
+    control_port: 32771
+  - id: sendspin_mc_artwork
+    client_id: sendspin-mc-artwork
+    client_name: Sendspin MC Artwork
+    server_port: 8932
+    control_port: 32772
+  - id: sendspin_mc_player
+    client_id: sendspin-mc-player
+    client_name: Sendspin MC Player
+    server_port: 8933
+    control_port: 32773
 
 media_source:
   - platform: sendspin
     id: sendspin_core_source
     sendspin_id: sendspin_core
+  - platform: sendspin_mc
+    id: coexist_mc_source
+    sendspin_mc_id: sendspin_mc_player
+    sample_rate: 44100
+
+switch:
+  - platform: sendspin
+    sendspin_id: sendspin_core
+    name: Native Enabled
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_artwork
+    name: Artwork Enabled
+    restore_mode: ALWAYS_OFF
+
+image:
+  - platform: sendspin_mc
+    id: coexist_artwork
+    sendspin_mc_id: sendspin_mc_artwork
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: coexist_current}
+  - platform: sendspin_mc
+    id: coexist_player_artwork
+    sendspin_mc_id: sendspin_mc_player
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: coexist_player_current}
+
+media_player:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_player
+    name: MC Controller
 
 sensor:
   - platform: sendspin_mc

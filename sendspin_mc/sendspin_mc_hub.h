@@ -8,11 +8,19 @@
 #include "esphome/core/component.h"
 #include "esphome/core/helpers.h"
 #include "esphome/core/preferences.h"
+#include "esphome/core/version.h"
+
+#ifdef USE_MDNS_SUPPORTS_ENABLE_DISABLE
+#include "esphome/components/mdns/mdns_component.h"
+#endif
 
 #include <sendspin/client.h>
 #include <sendspin/config.h>
 #include <sendspin/types.h>
 
+#ifdef USE_SENDSPIN_MC_ARTWORK
+#include <sendspin/artwork_role.h>
+#endif
 #ifdef USE_SENDSPIN_MC_CONTROLLER
 #include <sendspin/controller_role.h>
 #endif
@@ -26,7 +34,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <string>
 
 namespace esphome::sendspin_mc {
 
@@ -36,9 +43,8 @@ namespace esphome::sendspin_mc {
 /// without each subcomponent having to pick a priority independently. Children run
 /// one step later than hub so they can assume hub's setup() has already completed.
 namespace sendspin_mc_priority {
-// TEMPORARY DEVIATION: Set up after mDNS so each hub can register its own service.
-// Revisit this ordering when using native-managed per-instance discovery; see DEVIATIONS.md.
-inline constexpr float HUB = esphome::setup_priority::AFTER_CONNECTION - 1.0f;
+// Match native hub/child setup ordering; advertise from loop() after mDNS is ready.
+inline constexpr float HUB = esphome::setup_priority::AFTER_WIFI;
 inline constexpr float CHILD = HUB - 1.0f;
 }  // namespace sendspin_mc_priority
 
@@ -70,15 +76,18 @@ struct StaticDelayPref {
 ///    (for services the library pulls; e.g., persistence, network readiness).
 ///  - User -> library communication uses exposed functions on the client and role objects that the user calls.
 class SendspinMcHub final : public Component,
+#ifdef USE_SENDSPIN_MC_ARTWORK
+                          public sendspin::ArtworkRoleListener,
+#endif
 #ifdef USE_SENDSPIN_MC_CONTROLLER
-                            public sendspin::ControllerRoleListener,
+                          public sendspin::ControllerRoleListener,
 #endif
 #ifdef USE_SENDSPIN_MC_METADATA
-                            public sendspin::MetadataRoleListener,
+                          public sendspin::MetadataRoleListener,
 #endif
-                            public sendspin::SendspinClientListener,
-                            public sendspin::SendspinNetworkProvider,
-                            public sendspin::SendspinPersistenceProvider {
+                          public sendspin::SendspinClientListener,
+                          public sendspin::SendspinNetworkProvider,
+                          public sendspin::SendspinPersistenceProvider {
  public:
   float get_setup_priority() const override { return sendspin_mc_priority::HUB; }
   void setup() override;
@@ -87,7 +96,7 @@ class SendspinMcHub final : public Component,
 
   /// @brief Connects the underlying client to the given Sendspin server.
   ///
-  /// No-op if the hub's client is not ready (e.g. setup() has not completed).
+  /// No-op if the hub's client is not running (see is_client_running()).
   /// Must be called from the main loop thread.
   /// @param url WebSocket URL of the Sendspin server, starting with `ws://` (e.g. `ws://host:port/path`).
   void connect_to_server(const std::string &url);
@@ -95,7 +104,7 @@ class SendspinMcHub final : public Component,
   /// @brief Disconnects the underlying client from the current server.
   ///
   /// Sends a `client/goodbye` message with the given reason before closing the connection.
-  /// No-op if the hub's client is not ready. Must be called from the main loop thread.
+  /// No-op if the hub's client is not running. Must be called from the main loop thread.
   /// @param reason Reason reported to the server:
   ///   - `ANOTHER_SERVER`: client is switching to another server.
   ///   - `SHUTDOWN`: client is shutting down.
@@ -105,7 +114,7 @@ class SendspinMcHub final : public Component,
 
   /// @brief Updates the client's reported playback state on the server.
   ///
-  /// No-op if the hub's client is not ready. Must be called from the main loop thread.
+  /// No-op if the hub's client is not running. Must be called from the main loop thread.
   /// @param state New client state:
   ///   - `SYNCHRONIZED`: client is synchronized and playing from the server.
   ///   - `ERROR`: client encountered a playback error.
@@ -116,8 +125,14 @@ class SendspinMcHub final : public Component,
 
   void set_client_id(const std::string &client_id) { this->client_id_ = client_id; }
   void set_client_name(const std::string &client_name) { this->client_name_ = client_name; }
-  void set_server_port(uint16_t server_port) { this->server_port_ = server_port; }
-  void set_control_port(uint16_t control_port) { this->control_port_ = control_port; }
+  void set_server_port(uint16_t port) { this->server_port_ = port; }
+  void set_control_port(uint16_t port) { this->control_port_ = port; }
+
+  const std::string &get_client_id() const { return this->client_id_; }
+  std::string get_media_source_uri(const std::string &target) const {
+    return "sendspin_mc://" + this->client_id_ + "/" + target;
+  }
+  std::string get_current_source_uri() const { return this->get_media_source_uri("current"); }
 
   template<typename F> void add_group_update_callback(F &&callback) {
     this->group_update_callbacks_.add(std::forward<F>(callback));
@@ -125,10 +140,57 @@ class SendspinMcHub final : public Component,
 
   void set_task_stack_in_psram(bool task_stack_in_psram) { this->task_stack_in_psram_ = task_stack_in_psram; }
 
+  /// @brief Requests the Sendspin client, including the server, the roles and the mDNS advertisement, to start or
+  /// stop.
+  ///
+  /// Applied from the hub's loop(). Stopping blocks until the client is fully stopped; the roles' clear callbacks
+  /// fire from inside that call. With a sendspin switch configured the client stays stopped until the switch has
+  /// called this once. Must be called from the main loop thread.
+  void set_enabled(bool enabled);
+
+  /// @brief Returns whether the Sendspin client is running.
+  bool is_client_running() const { return this->client_ != nullptr && this->client_->is_started(); }
+
+  /// @brief Sets the device information reported to the server in the `client/hello` message.
+  ///
+  /// Each takes a pointer to a string literal emitted by codegen, so it must stay valid for the
+  /// lifetime of the hub. Only called for values the configuration overrides; anything left alone
+  /// keeps the default described on the member below.
+  void set_manufacturer(const char *manufacturer) { this->manufacturer_ = manufacturer; }
+  void set_model(const char *model) { this->model_ = model; }
+  void set_firmware_version(const char *firmware_version) { this->firmware_version_ = firmware_version; }
+
+#ifdef USE_MDNS_SUPPORTS_ENABLE_DISABLE
+  void set_mdns(mdns::MDNSComponent *mdns) { this->mdns_ = mdns; }
+#endif
+
   // --- Sendspin role specific methods ---
 
+#ifdef USE_SENDSPIN_MC_ARTWORK
+  void set_artwork_support(bool enabled) { this->artwork_support_ = enabled; }
+
+  void set_artwork_config(const sendspin::ArtworkRoleConfig &config) { this->artwork_config_ = config; }
+
+  /// @brief Acknowledges the most recent artwork delivery (display or clear) for a slot.
+  ///
+  /// Every slot is configured with the library's require_frame_done gate, which withholds the
+  /// next delivery for the slot until this is called. Exactly one ack is owed per delivery; a
+  /// redundant call is a safe no-op in the library. Must be called from the main loop thread.
+  void artwork_frame_done(uint8_t slot);
+
+  template<typename F> void add_image_decode_callback(F &&callback) {
+    this->artwork_image_decode_callbacks_.add(std::forward<F>(callback));
+  }
+  template<typename F> void add_image_display_callback(F &&callback) {
+    this->artwork_image_display_callbacks_.add(std::forward<F>(callback));
+  }
+  template<typename F> void add_image_clear_callback(F &&callback) {
+    this->artwork_image_clear_callbacks_.add(std::forward<F>(callback));
+  }
+#endif
+
 #ifdef USE_SENDSPIN_MC_CONTROLLER
-  void set_controller_support(bool controller_support) { this->controller_support_ = controller_support; }
+  void set_controller_support(bool enabled) { this->controller_support_ = enabled; }
 
   void send_client_command(sendspin::SendspinControllerCommand command, std::optional<uint8_t> volume = std::nullopt,
                            std::optional<bool> mute = std::nullopt);
@@ -136,11 +198,20 @@ class SendspinMcHub final : public Component,
   template<typename F> void add_controller_state_callback(F &&callback) {
     this->controller_state_callbacks_.add(std::forward<F>(callback));
   }
+
+  /// @brief Registers a callback that fires when the connection is lost and the cached controller state is dropped.
+  template<typename F> void add_controller_state_clear_callback(F &&callback) {
+    this->controller_state_clear_callbacks_.add(std::forward<F>(callback));
+  }
 #endif
 
 #ifdef USE_SENDSPIN_MC_METADATA
-  void set_metadata_support(bool metadata_support) { this->metadata_support_ = metadata_support; }
+  void set_metadata_support(bool enabled) { this->metadata_support_ = enabled; }
 
+  /// @brief Registers a callback that fires when the server sends metadata.
+  ///
+  /// Also fires when the connection is lost, with an all-empty state object (every field nullopt, timestamp 0) meaning
+  /// the cached metadata was dropped. Subscribers must treat an absent field as cleared, not as no update.
   template<typename F> void add_metadata_update_callback(F &&callback) {
     this->metadata_update_callbacks_.add(std::forward<F>(callback));
   }
@@ -150,7 +221,8 @@ class SendspinMcHub final : public Component,
 #endif
 
 #ifdef USE_SENDSPIN_MC_PLAYER
-  void set_player_support(bool player_support) { this->player_support_ = player_support; }
+  void set_player_support(bool enabled) { this->player_support_ = enabled; }
+
   void set_listener(sendspin::PlayerRoleListener *listener) { this->player_listener_ = listener; }
   void set_player_config(const sendspin::PlayerRoleConfig &config) { this->player_config_ = config; }
 
@@ -158,16 +230,17 @@ class SendspinMcHub final : public Component,
   sendspin::PlayerRole *get_player_role();
 #endif
 
-  const std::string &get_client_id() const { return this->client_id_; }
-  std::string get_media_source_uri(const std::string &target) const {
-    return "sendspin_mc://" + this->client_id_ + "/" + target;
-  }
-  std::string get_current_source_uri() const { return this->get_media_source_uri("current"); }
-
  protected:
   /// @brief Builds the SendspinClientConfig from ESPHome configuration and platform info.
   sendspin::SendspinClientConfig build_client_config_();
-  void register_mdns_service_();
+
+  /// @brief Returns the product name reported to the server: the configured model, or the device name.
+  const char *get_product_name_() const;
+
+#ifdef USE_MDNS_SUPPORTS_ENABLE_DISABLE
+  /// @brief Keeps the `_sendspin` mDNS service advertised while the client is running.
+  void update_mdns_service_();
+#endif
 
   // --- SendspinClientListener overrides ---
   void on_group_update(const sendspin::GroupUpdateObject &group) override;
@@ -185,21 +258,42 @@ class SendspinMcHub final : public Component,
 
   // --- Sendspin role specific methods/overrides/member variables ---
 
+#ifdef USE_SENDSPIN_MC_ARTWORK
+  void on_image_decode(uint8_t slot, const uint8_t *data, size_t length, sendspin::SendspinImageFormat format) override;
+
+  void on_image_display(uint8_t slot, uint32_t lateness_ms) override;
+
+  void on_image_clear(uint8_t slot) override;
+
+  sendspin::ArtworkRoleConfig artwork_config_{};
+  sendspin::ArtworkRole *artwork_role_{nullptr};
+
+  // Callback fan-out to child components; they filter by slot as needed.
+  CallbackManager<void(uint8_t, const uint8_t *, size_t, sendspin::SendspinImageFormat)>
+      artwork_image_decode_callbacks_{};
+  CallbackManager<void(uint8_t, uint32_t)> artwork_image_display_callbacks_{};
+  CallbackManager<void(uint8_t)> artwork_image_clear_callbacks_{};
+#endif
+
 #ifdef USE_SENDSPIN_MC_CONTROLLER
   sendspin::ControllerRole *controller_role_{nullptr};
-  bool controller_support_{false};
 
   void on_controller_state(const sendspin::ServerStateControllerObject &state) override;
 
-  // Callback fan-out to child components; they filter as needed
-  CallbackManager<void(const sendspin::ServerStateControllerObject &)> controller_state_callbacks_{};
+  void on_controller_state_clear() override;
+
+  // Callback fan-out to child components; they filter as needed. Only a media_player subscribes, while the switch
+  // action and the media source enable the controller role without one, so keep the idle cost to a single pointer.
+  LazyCallbackManager<void(const sendspin::ServerStateControllerObject &)> controller_state_callbacks_{};
+  LazyCallbackManager<void()> controller_state_clear_callbacks_{};
 #endif
 
 #ifdef USE_SENDSPIN_MC_METADATA
   sendspin::MetadataRole *metadata_role_{nullptr};
-  bool metadata_support_{false};
 
   void on_metadata(const sendspin::ServerMetadataStateObject &metadata) override;
+
+  void on_metadata_clear() override;
 
   // Callback fan-out to child components; they filter as needed
   CallbackManager<void(const sendspin::ServerMetadataStateObject &)> metadata_update_callbacks_{};
@@ -208,12 +302,27 @@ class SendspinMcHub final : public Component,
 #ifdef USE_SENDSPIN_MC_PLAYER
   sendspin::PlayerRoleListener *player_listener_{nullptr};
   sendspin::PlayerRoleConfig player_config_{};
-  bool player_support_{false};
 
   // Part of SendspinPersistenceProvider overrides
   ESPPreferenceObject static_delay_pref_;
   std::optional<uint16_t> load_static_delay() override;
   bool save_static_delay(uint16_t delay_ms) override;
+#endif
+
+#ifdef USE_SENDSPIN_MC_ARTWORK
+  bool artwork_support_{false};
+#endif
+
+#ifdef USE_SENDSPIN_MC_CONTROLLER
+  bool controller_support_{false};
+#endif
+
+#ifdef USE_SENDSPIN_MC_METADATA
+  bool metadata_support_{false};
+#endif
+
+#ifdef USE_SENDSPIN_MC_PLAYER
+  bool player_support_{false};
 #endif
 
   // --- Core member variables ---
@@ -230,6 +339,20 @@ class SendspinMcHub final : public Component,
   uint16_t server_port_{sendspin::SendspinClientConfig::DEFAULT_SERVER_PORT};
   uint16_t control_port_{0};
   bool task_stack_in_psram_{false};
+
+  // Requested client state, applied from loop(). Empty until the switch restores its state.
+  std::optional<bool> enabled_;
+
+  // Device information sent in the `client/hello` message. Defaults apply when neither the
+  // sendspin configuration nor the project information supplies a value.
+  const char *manufacturer_{"ESPHome"};
+  const char *model_{nullptr};  // nullptr reports the device name instead
+  const char *firmware_version_{ESPHOME_VERSION};
+
+#ifdef USE_MDNS_SUPPORTS_ENABLE_DISABLE
+  mdns::MDNSComponent *mdns_{nullptr};
+  bool mdns_advertised_{false};  // Last state requested from mdns
+#endif
 };
 
 /// @brief Base class for all sendspin subcomponents.

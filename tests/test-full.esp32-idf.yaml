@@ -6,7 +6,10 @@ sendspin_mc:
   client_name: Sendspin MC Full
   server_port: 8931
   control_port: 32771
-  sendspin_cpp_ref: "0.7.1"
+  sendspin_cpp_ref: "0.8.0"
+  manufacturer: Test Manufacturer
+  model: Test Model
+  firmware_version: test-firmware
   task_stack_in_psram: true
 
 media_source:
@@ -18,6 +21,7 @@ media_source:
     initial_static_delay: 5ms
     static_delay_adjustable: true
     fixed_delay: 480us
+    codecs: [pcm, flac, opus]
     sample_rate: 48000
     decode_memory: internal
 
@@ -71,3 +75,36 @@ button:
       - sendspin_mc.switch: sendspin_mc_full
       - sendspin_mc.media_source.enable_static_delay_adjustment: sendspin_mc_source_full
       - sendspin_mc.media_source.disable_static_delay_adjustment: sendspin_mc_source_full
+
+switch:
+  - platform: sendspin_mc
+    sendspin_mc_id: sendspin_mc_full
+    id: sendspin_mc_enabled
+    name: Sendspin MC Enabled
+    restore_mode: RESTORE_DEFAULT_OFF
+
+image:
+  - platform: sendspin_mc
+    id: album_slot
+    sendspin_mc_id: sendspin_mc_full
+    source: ALBUM
+    format: JPEG
+    type: RGB565
+    resize: 32x32
+    current_image: {id: album_current}
+    transition_image: {id: album_transition}
+    display_offset: 250ms
+    on_image_display:
+      - sendspin_mc.image.transition_finished: album_slot
+    on_image_clear:
+      - sendspin_mc.image.transition_finished: album_slot
+    on_image_error:
+      - logger.log: Artwork error
+  - platform: sendspin_mc
+    id: artist_slot
+    source: ARTIST
+    format: PNG
+    type: RGB565
+    resize: 16x16
+    current_image: {id: artist_current}
+    display_offset: -250ms

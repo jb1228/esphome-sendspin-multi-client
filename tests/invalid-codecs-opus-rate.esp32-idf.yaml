@@ -1,0 +1,7 @@
+<<: !include test-full.esp32-idf.yaml
+
+media_source:
+  - platform: sendspin_mc
+    id: sendspin_mc_source_full
+    sample_rate: 44100
+    codecs: [opus]

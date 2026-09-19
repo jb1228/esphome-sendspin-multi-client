@@ -1,15 +1,15 @@
 # ESPHome Sendspin Multi-Client
 
 `sendspin_mc` is a multi-instance adaptation of ESPHome's core `sendspin`
-component. It can run by itself or alongside the official component on the same
+component. It can run by itself or alongside the native component on the same
 ESP32 device.
 
 The implementation is based on ESPHome `dev` commit
-[`e50fae3`](https://github.com/esphome/esphome/tree/e50fae3f4693d01031d687e911d6749e9dbec338/esphome/components/sendspin)
+[`8bcb500`](https://github.com/esphome/esphome/tree/8bcb5004da8af416f11028bf4609f2c78ca104e5/esphome/components/sendspin)
 and includes the same hub, switch action, media source, controller media player,
-numeric sensors, and text sensors.
+artwork, numeric sensors, and text sensors.
 
-## Differences from ESPHome core
+## Differences from ESPHome's Core Sendspin Component
 
 - The domain, C++ namespace, actions, and parent key use `sendspin_mc` so the
   component does not replace or collide with core `sendspin`.
@@ -47,9 +47,6 @@ external_components:
   - source: github://jb1228/esphome-sendspin-multi-client@main
     components: [sendspin_mc]
 ```
-
-The component declares the same `sendspin/sendspin-cpp` dependency as ESPHome
-core; no `esp32.framework.components` entry is required.
 
 ## Configuration
 
@@ -92,3 +89,29 @@ be included multiple times with different `sendspin_instance` values.
 When core `sendspin` is also configured, do not use its fixed server port 8928
 or HTTP control port 32769 for a `sendspin_mc` hub. Configuration validation
 rejects those collisions.
+
+
+### Important Note: 
+> The native Sendspin currently adds and removes `_sendspin._tcp` without an instance name. Espressif treats those lookups as matching any instance, so native registration can collide with MC, and disabling native can remove an MC advertisement. Unique names and ports do not prevent this.
+
+To work around this when using this alongside the native component, I am currently keeping the `sendspin_mc` disabled until the native is enabled, which seems to be working for the time being:
+
+``` yaml
+switch:
+
+  - platform: sendspin_mc
+    id: switch_sendspin_mc_enabled
+    sendspin_mc_id: ${sendspin_mc_hub_id}
+    name: "Sendspin Multi-Client Enabled"
+    restore_mode: ALWAYS_OFF
+
+    # Native ESPHome Sendspin Component:
+  - platform: sendspin 
+    id: switch_sendspin_native_enabled
+    sendspin_id: ${sendspin_hub_id}
+    name: "Sendspin Native Enabled"
+    restore_mode: ALWAYS_ON
+    on_turn_on:
+      - delay: 1s
+      - switch.turn_on: switch_sendspin_mc_enabled
+```

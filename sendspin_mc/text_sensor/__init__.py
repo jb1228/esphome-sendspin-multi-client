@@ -1,6 +1,6 @@
 import esphome.codegen as cg
-from esphome.components import text_sensor
 import esphome.config_validation as cv
+from esphome.components import text_sensor
 from esphome.const import CONF_ID, CONF_TYPE
 from esphome.types import ConfigType
 

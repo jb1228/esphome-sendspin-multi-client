@@ -39,12 +39,12 @@ void SendspinMcMediaSource::set_static_delay_adjustable(bool adjustable) {
 
 // --- MediaSource interface ---
 
-bool SendspinMcMediaSource::can_handle(const std::string &uri) const {
-  return uri.starts_with(this->parent_->get_media_source_uri(""));
-}
+bool SendspinMcMediaSource::can_handle(const std::string &uri) const { return uri.starts_with(this->parent_->get_media_source_uri("")); }
 
 // THREAD CONTEXT: Main loop (media_source.h documents play_uri as main-loop only)
 bool SendspinMcMediaSource::play_uri(const std::string &uri) {
+  // The queued request has been delivered, whatever the outcome, so the next stream start may request again
+  this->pending_start_ = false;
   if (!this->is_ready() || this->is_failed() || !this->has_listener()) {
     return false;
   }
@@ -54,28 +54,31 @@ bool SendspinMcMediaSource::play_uri(const std::string &uri) {
     return false;
   }
 
-  const std::string uri_prefix = this->parent_->get_media_source_uri("");
-  if (!uri.starts_with(uri_prefix)) {
-    ESP_LOGE(TAG, "Invalid URI for %s: '%s'", this->parent_->get_client_id().c_str(), uri.c_str());
+  if (!this->parent_->is_client_running()) {
+    ESP_LOGE(TAG, "Cannot play '%s': Sendspin is disabled", uri.c_str());
     return false;
   }
 
-  std::string sendspin_target = uri.substr(uri_prefix.size());
-
-  if (sendspin_target.empty()) {
+  if (!uri.starts_with(this->parent_->get_media_source_uri(""))) {
     ESP_LOGE(TAG, "Invalid URI: '%s'", uri.c_str());
     return false;
   }
 
-  ESP_LOGD(TAG, "sendspin target: %s", sendspin_target.c_str());
+  std::string sendspin_id = uri.substr(this->parent_->get_media_source_uri("").size());
 
-  if (sendspin_target != "current") {
+  if (sendspin_id.empty()) {
+    ESP_LOGE(TAG, "Invalid URI: '%s'", uri.c_str());
+    return false;
+  }
+
+  ESP_LOGD(TAG, "sendspin_mc_id: %s", sendspin_id.c_str());
+
+  if (sendspin_id != "current") {
     // Connect to a new server as a websocket client
-    this->parent_->connect_to_server("ws://" + sendspin_target);
+    this->parent_->connect_to_server("ws://" + sendspin_id);
   }
 
   // Tell the orchestrator we're now playing so it routes audio output from us
-  this->pending_start_ = false;
   this->set_state_(media_source::MediaSourceState::PLAYING);
 
   return true;
@@ -83,6 +86,15 @@ bool SendspinMcMediaSource::play_uri(const std::string &uri) {
 
 // THREAD CONTEXT: Main loop (media_source.h documents handle_command as main-loop only)
 void SendspinMcMediaSource::handle_command(media_source::MediaSourceCommand command) {
+  if (!this->parent_->is_client_running()) {
+    if (command == media_source::MediaSourceCommand::STOP) {
+      // Nothing is playing, so the orchestrator gets its pipeline back straight away
+      this->on_stream_end();
+    } else {
+      ESP_LOGW(TAG, "Cannot handle command: Sendspin is disabled");
+    }
+    return;
+  }
   switch (command) {
     case media_source::MediaSourceCommand::STOP: {
       if (!this->pending_start_) {

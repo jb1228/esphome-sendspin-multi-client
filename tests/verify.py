@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Run configuration and generated-code regression checks for sendspin_mc."""
 
-from pathlib import Path
 import subprocess
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TESTS = ROOT / "tests"

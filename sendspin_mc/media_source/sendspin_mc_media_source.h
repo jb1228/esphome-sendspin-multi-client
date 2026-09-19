@@ -18,8 +18,8 @@ namespace esphome::sendspin_mc {
 /// SyncTask and bridges it to ESPHome's MediaSource output pipeline. Also forwards
 /// transport commands to the hub's controller role.
 class SendspinMcMediaSource final : public SendspinMcChild,
-                                    public media_source::MediaSource,
-                                    public sendspin::PlayerRoleListener {
+                                  public media_source::MediaSource,
+                                  public sendspin::PlayerRoleListener {
  public:
   void setup() override;
   void dump_config() override;

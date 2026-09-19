@@ -1,0 +1,69 @@
+<<: !include common.yaml
+sendspin_mc:
+  - id: artwork_a
+    client_id: artwork-a
+    client_name: Artwork A
+    server_port: 8931
+    control_port: 32771
+  - id: artwork_b
+    client_id: artwork-b
+    client_name: Artwork B
+    server_port: 8932
+    control_port: 32772
+image:
+  - platform: sendspin_mc
+    id: slot_a_0
+    sendspin_mc_id: artwork_a
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_a_0}
+  - platform: sendspin_mc
+    id: slot_b_0
+    sendspin_mc_id: artwork_b
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_b_0}
+  - platform: sendspin_mc
+    id: slot_a_1
+    sendspin_mc_id: artwork_a
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_a_1}
+  - platform: sendspin_mc
+    id: slot_b_1
+    sendspin_mc_id: artwork_b
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_b_1}
+  - platform: sendspin_mc
+    id: slot_a_2
+    sendspin_mc_id: artwork_a
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_a_2}
+  - platform: sendspin_mc
+    id: slot_b_2
+    sendspin_mc_id: artwork_b
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_b_2}
+  - platform: sendspin_mc
+    id: slot_a_3
+    sendspin_mc_id: artwork_a
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_a_3}
+  - platform: sendspin_mc
+    id: slot_b_3
+    sendspin_mc_id: artwork_b
+    format: BMP
+    type: RGB565
+    resize: 16x16
+    current_image: {id: current_b_3}

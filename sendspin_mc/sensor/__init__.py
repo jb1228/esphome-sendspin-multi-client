@@ -1,6 +1,8 @@
+from typing import Any
+
 import esphome.codegen as cg
-from esphome.components import sensor
 import esphome.config_validation as cv
+from esphome.components import sensor
 from esphome.const import (
     CONF_ID,
     CONF_TYPE,
@@ -57,7 +59,7 @@ _HUB_ID_SCHEMA = cv.Schema(
 )
 
 
-def _metadata_schema(**sensor_kwargs):
+def _metadata_schema(**sensor_kwargs: Any) -> cv.Schema:
     """Schema for event-driven numeric metadata sensors (duration/year/track)."""
     return (
         sensor.sensor_schema(
