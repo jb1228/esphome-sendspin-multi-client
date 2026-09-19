@@ -33,6 +33,9 @@ CONF_INITIAL_STATIC_DELAY = "initial_static_delay"
 CONF_FIXED_DELAY = "fixed_delay"
 CONF_DECODE_MEMORY = "decode_memory"
 CONF_SERVER_PORT = "server_port"
+CONF_SENDSPIN_CPP_REF = "sendspin_cpp_ref"
+
+DEFAULT_SENDSPIN_CPP_REF = "0.8.0"
 
 # sendspin-cpp library lives in the global `sendspin` namespace.
 sendspin_library_ns = cg.global_ns.namespace("sendspin")
@@ -109,6 +112,14 @@ def _validate_mdns_instance_name(value: str) -> str:
         raise cv.Invalid("sendspin_mc client_name must not be empty")
     if len(value.encode("utf-8")) > 63:
         raise cv.Invalid("sendspin_mc client_name must be at most 63 UTF-8 bytes")
+    return value
+
+
+def _validate_sendspin_cpp_ref(value: str) -> str:
+    """Validate the source ref for the sendspin-cpp IDF component."""
+    value = cv.string_strict(value)
+    if not value.strip():
+        raise cv.Invalid("sendspin_mc sendspin_cpp_ref must not be empty")
     return value
 
 
@@ -212,6 +223,9 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_CLIENT_NAME): _validate_mdns_instance_name,
             cv.Required(CONF_SERVER_PORT): cv.port,
             cv.Required(CONF_CONTROL_PORT): cv.port,
+            cv.Optional(
+                CONF_SENDSPIN_CPP_REF, default=DEFAULT_SENDSPIN_CPP_REF
+            ): _validate_sendspin_cpp_ref,
             cv.Optional(CONF_TASK_STACK_IN_PSRAM): psram.validate_task_stack_in_psram,
         }
     ),
@@ -228,6 +242,14 @@ def _final_validate(config: ConfigType) -> ConfigType:
     # This hook runs once per MULTI_CONF entry. Perform the aggregate check once.
     if config[CONF_ID].id != hubs[0][CONF_ID].id:
         return config
+
+    sendspin_cpp_refs = {hub[CONF_SENDSPIN_CPP_REF] for hub in hubs}
+    if len(sendspin_cpp_refs) > 1:
+        refs = ", ".join(repr(ref) for ref in sorted(sendspin_cpp_refs))
+        raise cv.Invalid(
+            "Each sendspin_mc hub must use the same sendspin_cpp_ref; "
+            f"got: {refs}"
+        )
 
     for field_name, label in (
         (CONF_CLIENT_ID, "client ID"),
@@ -346,7 +368,9 @@ async def to_code(config: ConfigType) -> None:
         psram.request_external_task_stack()
 
     # sendspin-cpp library
-    esp32.add_idf_component(name="sendspin/sendspin-cpp", ref="0.7.2")
+    esp32.add_idf_component(
+        name="sendspin/sendspin-cpp", ref=config[CONF_SENDSPIN_CPP_REF]
+    )
 
     component_data = _get_all_data()
     if not component_data.sdkconfig_job_scheduled:

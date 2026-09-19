@@ -6,6 +6,7 @@ sendspin_mc:
   client_name: Sendspin MC Full
   server_port: 8931
   control_port: 32771
+  sendspin_cpp_ref: "0.7.1"
   task_stack_in_psram: true
 
 media_source:
