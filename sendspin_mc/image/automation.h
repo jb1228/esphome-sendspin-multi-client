@@ -2,7 +2,7 @@
 
 #include "esphome/core/defines.h"
 
-#if defined(USE_ESP32) && defined(USE_SENDSPIN_MC_ARTWORK)
+#if defined(USE_ESP_IDF) && defined(USE_SENDSPIN_MC_ARTWORK)
 
 #include "esphome/core/automation.h"
 #include "sendspin_mc_image.h"

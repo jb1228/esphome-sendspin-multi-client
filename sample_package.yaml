@@ -14,7 +14,7 @@ defaults:
   static_delay_adjustable: true
   buffer_size: 200000
   task_stack_in_psram: true
-  sendspin_cpp_ref: "0.8.0" # <- must match current sendspin-cpp version used by ESPHome's native Sendspin component, if that component is also being used.
+  sendspin_cpp_ref: "0.9.3" # <- must match current sendspin-cpp version used by ESPHome's native Sendspin component, if that component is also being used.
 
   sendspin_mc_hub_id: "sendspin_mc_hub_${sendspin_instance}"
   sendspin_mc_source_id: "sendspin_mc_source_${sendspin_instance}"

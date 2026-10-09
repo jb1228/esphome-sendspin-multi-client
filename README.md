@@ -4,10 +4,17 @@
 component. It can run by itself or alongside the native component on the same
 ESP32 device.
 
-The implementation is based on ESPHome `dev` commit
-[`8bcb500`](https://github.com/esphome/esphome/tree/8bcb5004da8af416f11028bf4609f2c78ca104e5/esphome/components/sendspin)
-and includes the same hub, switch action, media source, controller media player,
-artwork, numeric sensors, and text sensors.
+The compatibility implementation targets ESPHome `dev` commit
+[`a4a09043ec`](https://github.com/esphome/esphome/tree/a4a09043ec1c1b5dd1f35c785125d751d56f2b43/esphome/components/sendspin)
+and sendspin-cpp `0.9.3`. It includes the hub, enable switch, switch action,
+media source, controller media player, artwork, numeric sensors, and metadata
+text sensors. Native's pairing configuration, pairing automations, pairing-code
+text sensor, unpaired-access switch, and API token retrieval are not implemented.
+
+ESP-IDF is required. Connections use the Sendspin 1.0.0-rc1 protocol; Music
+Assistant must support that protocol (2.11.0b4 or newer). Unpaired access is
+always enabled, so a compatible server can play without pairing. Artwork must
+use JPEG or PNG, and media-source codecs must include FLAC or PCM.
 
 ## Differences from ESPHome's Core Sendspin Component
 
@@ -18,6 +25,9 @@ artwork, numeric sensors, and text sensors.
 - `client_id` must be non-empty and cannot contain `/`; `client_name` must fit
   one DNS-SD label (63 UTF-8 bytes) and is compared case-insensitively for mDNS
   uniqueness.
+- The configured `client_id` is a stable local key for preferences and media-source
+  URIs. The protocol client ID comes from each hub's independently persisted
+  keypair. Keep the local key unchanged to preserve that identity across updates.
 - Child platforms select their hub with `sendspin_mc_id`. ESPHome can infer the
   parent when only one hub is configured.
 - Roles, preferences, media-source URIs, WebSocket servers, and mDNS services
@@ -37,7 +47,7 @@ configuration author's responsibility.
 ### Implementation differences
 
 - Each client registers its own named mDNS service.
-- Hubs initialize after mDNS, followed by their child components.
+- Hubs use native setup ordering and advertise from their loop after mDNS is ready.
 - Shared library role flags account for both MC and native clients.
 
 ## Installation
@@ -107,6 +117,7 @@ switch:
 
     # Native ESPHome Sendspin Component:
   - platform: sendspin 
+    type: enabled
     id: switch_sendspin_native_enabled
     sendspin_id: ${sendspin_hub_id}
     name: "Sendspin Native Enabled"

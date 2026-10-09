@@ -58,7 +58,7 @@ CONF_SERVER_PORT = "server_port"
 # Both components share one library; this setting allows matching native's version.
 CONF_SENDSPIN_CPP_REF = "sendspin_cpp_ref"
 
-DEFAULT_SENDSPIN_CPP_REF = "0.8.0"
+DEFAULT_SENDSPIN_CPP_REF = "0.9.3"
 
 # sendspin-cpp library lives in the global `sendspin` namespace.
 sendspin_library_ns = cg.global_ns.namespace("sendspin")
@@ -87,7 +87,6 @@ OPUS_SAMPLE_RATE = 48000
 SendspinImageFormat = sendspin_library_ns.enum("SendspinImageFormat", is_class=True)
 IMAGE_FORMAT_JPEG = SendspinImageFormat.enum("JPEG")
 IMAGE_FORMAT_PNG = SendspinImageFormat.enum("PNG")
-IMAGE_FORMAT_BMP = SendspinImageFormat.enum("BMP")
 
 SendspinImageSource = sendspin_library_ns.enum("SendspinImageSource", is_class=True)
 IMAGE_SOURCE_ALBUM = SendspinImageSource.enum("ALBUM")
@@ -145,7 +144,7 @@ class SendspinMcComponentData:
 
 
 def _validate_client_id(value: str) -> str:
-    """Validate the configured Sendspin identity and URI path segment."""
+    """Validate the local instance key used for preferences and URI routing."""
     value = cv.string_strict(value)
     if not value:
         raise cv.Invalid("sendspin_mc client_id must not be empty")
@@ -298,6 +297,8 @@ CONFIG_SCHEMA = cv.All(
         }
     ),
     cv.only_on_esp32,
+    # sendspin-cpp needs noise-c as an ESP-IDF component.
+    cv.only_with_framework("esp-idf"),
     _request_high_performance_networking,
 )
 
@@ -411,16 +412,22 @@ async def _finalize_sendspin_sdkconfig() -> None:
         "METADATA": any(data.metadata_support for data in configurations),
         "PLAYER": any(data.player_support for data in configurations),
         "VISUALIZER": any(data.visualizer_support for data in configurations),
+        "OPUS": any(
+            data.player_config is not None
+            and CODEC_OPUS in data.player_config[CONF_CODECS]
+            for data in configurations
+        ),
     }
     core_sendspin_present = "sendspin" in CORE.config
 
-    # If core sendspin is present, leave roles used only by it untouched. A role used
-    # by sendspin_mc must be forced on after core's own true/false decisions.
+    # If core sendspin is present, leave roles/codecs used only by it untouched.
+    # MC requirements must be forced on after core's own true/false decisions.
     for role, enabled in requested.items():
         if enabled or not core_sendspin_present:
             esp32.add_idf_sdkconfig_option(f"CONFIG_SENDSPIN_ENABLE_{role}", enabled)
     if not core_sendspin_present:
         esp32.add_idf_sdkconfig_option("CONFIG_SENDSPIN_ENABLE_COLOR", False)
+        esp32.add_idf_sdkconfig_option("CONFIG_SENDSPIN_ENABLE_SOURCE", False)
 
 
 async def to_code(config: ConfigType) -> None:
@@ -469,6 +476,8 @@ async def to_code(config: ConfigType) -> None:
     esp32.add_idf_component(
         name="sendspin/sendspin-cpp", ref=config[CONF_SENDSPIN_CPP_REF]
     )
+    # esp_websocket_client links esp_tls even for ws:// connections.
+    esp32.request_tls()
 
     component_data = _get_all_data()
     if not component_data.sdkconfig_job_scheduled:
@@ -564,7 +573,8 @@ async def to_code(config: ConfigType) -> None:
             ("audio_formats", audio_format_structs),
             ("audio_buffer_capacity", player_cfg[CONF_BUFFER_SIZE]),
             ("fixed_delay_us", player_cfg[CONF_FIXED_DELAY]),
-            ("initial_static_delay_ms", player_cfg[CONF_INITIAL_STATIC_DELAY]),
+            # Preserve the existing YAML key while using the library's renamed field.
+            ("initial_output_delay_ms", player_cfg[CONF_INITIAL_STATIC_DELAY]),
             ("psram_stack", psram_stack),
         ]
         if (decode_memory := player_cfg.get(CONF_DECODE_MEMORY)) is not None:

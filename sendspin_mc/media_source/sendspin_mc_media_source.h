@@ -2,7 +2,7 @@
 
 #include "esphome/core/defines.h"
 
-#if defined(USE_ESP32) && defined(USE_SENDSPIN_MC_CONTROLLER) && defined(USE_SENDSPIN_MC_PLAYER)
+#if defined(USE_ESP_IDF) && defined(USE_SENDSPIN_MC_CONTROLLER) && defined(USE_SENDSPIN_MC_PLAYER)
 
 #include "esphome/components/sendspin_mc/sendspin_mc_hub.h"
 

@@ -2,7 +2,7 @@
 
 #include "esphome/core/defines.h"
 
-#ifdef USE_ESP32
+#ifdef USE_ESP_IDF
 
 #include "esphome/components/sendspin_mc/sendspin_mc_hub.h"
 #include "esphome/components/switch/switch.h"
@@ -21,4 +21,4 @@ class SendspinMcSwitch final : public switch_::Switch, public SendspinMcChild {
 
 }  // namespace esphome::sendspin_mc
 
-#endif  // USE_ESP32
+#endif  // USE_ESP_IDF
