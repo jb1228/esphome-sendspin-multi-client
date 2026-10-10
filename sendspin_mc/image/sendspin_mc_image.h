@@ -29,7 +29,7 @@ class ArtworkDecodeSink : public runtime_image::RuntimeImage {
   /// @brief True when the decode ended with the given buffer still in place.
   ///
   /// An external buffer is dropped rather than resized, so a decode that wanted other dimensions
-  /// leaves the sink holding nothing. The JPEG and BMP decoders report that as a decode error, but
+  /// leaves the sink holding nothing. The JPEG decoder reports that as a decode error, but
   /// the PNG decoder ignores it and reports success, so the outcome is checked here as well.
   bool decoded_into(const uint8_t *buffer) const { return this->buffer_ == buffer; }
 };

@@ -26,7 +26,10 @@ class LifecycleTest(unittest.TestCase):
         source = (ROOT / "sendspin_mc/sendspin_mc_hub.cpp").read_text()
         methods = "\n".join(
             method(source, f"void SendspinMcHub::{name}")
-            for name in ("loop()", "set_enabled(bool enabled)", "update_mdns_service_()")
+            for name in (
+                "loop()", "set_enabled(bool enabled)", "set_unpaired_access_enabled(bool enabled)",
+                "confirm_pairing_window()", "cancel_pairing_window()", "update_mdns_service_()",
+            )
         )
         harness = (ROOT / "tests/lifecycle_harness.cpp").read_text()
         compiler = shutil.which("c++")

@@ -6,7 +6,7 @@ sendspin_mc:
   client_name: Sendspin MC Full
   server_port: 8931
   control_port: 32771
-  sendspin_cpp_ref: "0.8.0"
+  sendspin_cpp_ref: "0.9.3"
   manufacturer: Test Manufacturer
   model: Test Model
   firmware_version: test-firmware
@@ -78,6 +78,7 @@ button:
 
 switch:
   - platform: sendspin_mc
+    type: enabled
     sendspin_mc_id: sendspin_mc_full
     id: sendspin_mc_enabled
     name: Sendspin MC Enabled

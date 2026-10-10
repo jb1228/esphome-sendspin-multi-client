@@ -37,12 +37,20 @@ def verify_valid_configs() -> None:
         "test-implicit-parent.esp32-idf.yaml",
         "test-multi.esp32-idf.yaml",
         "test-coexist.esp32-idf.yaml",
+        "test-pairing.esp32-idf.yaml",
+        "test-mdns-disabled.esp32-idf.yaml",
+        "test-artwork-slots.esp32-idf.yaml",
     ):
         run_esphome("config", str(TESTS / filename))
 
 
 def verify_invalid_configs() -> None:
     expected_errors = {
+        "invalid-pairing-methods.esp32-idf.yaml": "cannot be used with a dynamic pairing code",
+        "invalid-pairing-code.esp32-idf.yaml": "must be exactly 8 decimal digits",
+        "invalid-unpaired-setting.esp32-idf.yaml": "cannot be set together with an unpaired_access switch",
+        "invalid-duplicate-switch.esp32-idf.yaml": "Only one sendspin_mc 'enabled' switch is allowed per hub",
+        "invalid-artwork-slots.esp32-idf.yaml": "Too many Sendspin image slots",
         "invalid-client-id-uri.esp32-idf.yaml": "client_id must not contain '/'",
         "invalid-core-mdns-name.esp32-idf.yaml": "conflicts with the official sendspin mDNS instance",
         "invalid-core-port.esp32-idf.yaml": "conflicts with the official sendspin server",
@@ -94,17 +102,57 @@ def verify_multi_codegen() -> None:
     )
     assert_contains(
         hub_source,
-        'fnv1a_hash("sendspin_mc_last_played_" + this->client_id_)',
-        'fnv1a_hash("sendspin_mc_static_delay_" + this->client_id_)',
+        'fnv1a_hash("sendspin_mc_" + name + "_" + client_id)',
+        'make_blob_pref(this->client_id_, "static_delay", keys::OUTPUT_DELAY_SIZE)',
         'mdns_service_add(this->client_name_.c_str(), "_sendspin", "_tcp", this->server_port_',
-        '{(char *) "path", (char *) SENDSPIN_PATH}',
+        '{"path", "/sendspin"}',
     )
+
+
+def verify_pairing_codegen() -> None:
+    run_esphome("compile", "--only-generate", str(TESTS / "test-pairing.esp32-idf.yaml"))
+    main_cpp = (BUILD / "src" / "main.cpp").read_text()
+    defines = (BUILD / "src" / "esphome" / "core" / "defines.h").read_text()
+    assert_contains(
+        main_cpp,
+        'static_pairing->set_static_pairing_code("01234567")',
+        "static_pairing->set_unpaired_access_enabled(false)",
+        "dynamic_pairing->set_pairing_code_display_supported(true)",
+        "dynamic_pairing->add_on_open_pairing_window_callback",
+        "dynamic_pairing->add_on_close_pairing_window_callback",
+        "dynamic_pairing->add_on_display_pairing_code_callback",
+        "dynamic_pairing->add_on_clear_pairing_code_callback",
+        "dynamic_pairing->add_on_pairing_succeeded_callback",
+        "dynamic_pairing->add_on_pairing_failed_callback",
+        "dynamic_pairing->confirm_pairing_window()",
+        "static_pairing->cancel_pairing_window()",
+        "open_access->set_enabled(true)",
+    )
+    for forbidden in (
+        "static_pairing->set_pairing_code_display_supported",
+        "open_access->set_pairing_code_display_supported",
+        "dynamic_pairing->set_enabled",
+        "dynamic_pairing->set_unpaired_access_enabled",
+        "open_access->set_unpaired_access_enabled",
+    ):
+        assert forbidden not in main_cpp, forbidden
+    assert "USE_SENDSPIN_MC_METADATA" not in defines
+
+    run_esphome("compile", "--only-generate", str(TESTS / "test-implicit-parent.esp32-idf.yaml"))
+    main_cpp = (BUILD / "src" / "main.cpp").read_text()
+    assert_contains(main_cpp, "sendspin_mc_implicit->set_pairing_code_display_supported(true)")
+    assert "sendspin_mc_implicit->set_enabled" not in main_cpp
+    assert "sendspin_mc_implicit->set_unpaired_access_enabled" not in main_cpp
+
+    for filename in ("test-full.esp32-idf.yaml", "test-coexist.esp32-idf.yaml"):
+        run_esphome("compile", "--only-generate", str(TESTS / filename))
 
 
 def main() -> None:
     verify_valid_configs()
     verify_invalid_configs()
     verify_multi_codegen()
+    verify_pairing_codegen()
     print("sendspin_mc validation passed")
 
 

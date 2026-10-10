@@ -22,18 +22,26 @@ sensor:
 
 text_sensor:
   - platform: sendspin_mc
+    type: pairing_code
+    name: Implicit Pairing Code
+  - platform: sendspin_mc
     name: Sendspin MC Implicit Title
     type: title
 
 switch:
   - platform: sendspin_mc
+    type: unpaired_access
+    name: Implicit Unpaired Access
+    restore_mode: ALWAYS_OFF
+  - platform: sendspin_mc
+    type: enabled
     id: implicit_enabled
     name: Implicit Enabled
 
 image:
   - platform: sendspin_mc
     id: implicit_art
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: implicit_current}

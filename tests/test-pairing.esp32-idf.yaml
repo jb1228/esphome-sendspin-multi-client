@@ -1,0 +1,79 @@
+<<: !include common.yaml
+
+sendspin:
+  id: native_pairing
+  static_pairing_code: "87654321"
+  unpaired_access: false
+
+sendspin_mc:
+  - id: static_pairing
+    client_id: mc-static
+    client_name: MC Static Pairing
+    server_port: 8931
+    control_port: 32771
+    static_pairing_code: "01234567"
+    unpaired_access: false
+  - id: dynamic_pairing
+    client_id: mc-dynamic
+    client_name: MC Dynamic Pairing
+    server_port: 8932
+    control_port: 32772
+    on_open_pairing_window:
+      - lambda: |-
+          (void) id(dynamic_pairing);
+    on_close_pairing_window:
+      - lambda: |-
+          (void) id(dynamic_pairing);
+    on_display_pairing_code:
+      - lambda: |-
+          (void) code;
+    on_clear_pairing_code:
+      - lambda: |-
+          (void) id(dynamic_pairing);
+    on_pairing_succeeded:
+      - lambda: |-
+          (void) server_id;
+    on_pairing_failed:
+      - lambda: |-
+          (void) server_id;
+          (void) reason;
+  - id: open_access
+    client_id: mc-open
+    client_name: MC Open Access
+    server_port: 8933
+    control_port: 32773
+
+switch:
+  - platform: sendspin_mc
+    type: enabled
+    sendspin_mc_id: static_pairing
+    name: Static Client Enabled
+  - platform: sendspin_mc
+    type: enabled
+    sendspin_mc_id: dynamic_pairing
+    name: Dynamic Client Enabled
+  - platform: sendspin_mc
+    type: unpaired_access
+    sendspin_mc_id: dynamic_pairing
+    name: Dynamic Unpaired Access
+    restore_mode: ALWAYS_OFF
+  - platform: sendspin_mc
+    type: unpaired_access
+    sendspin_mc_id: open_access
+    name: Open Unpaired Access
+
+text_sensor:
+  - platform: sendspin_mc
+    type: pairing_code
+    sendspin_mc_id: dynamic_pairing
+    name: Dynamic Pairing Code
+
+button:
+  - platform: template
+    name: Confirm Dynamic Pairing
+    on_press:
+      - sendspin_mc.confirm_pairing_window: dynamic_pairing
+  - platform: template
+    name: Cancel Static Pairing
+    on_press:
+      - sendspin_mc.cancel_pairing_window: static_pairing

@@ -12,6 +12,7 @@ static const char *const TAG = "sendspin_mc.image";
 
 // How long a displayed frame may wait for sendspin.image.transition_finished before a warning
 // names the missing ack. Generous next to a typical fade of a second or two.
+static constexpr uint32_t TRANSITION_ACK_TIMEOUT_ID = 0;
 static constexpr uint32_t TRANSITION_ACK_WARNING_MS = 10000;
 
 // THREAD CONTEXT: Main loop. Children set up after the hub, so the artwork role already exists.
@@ -125,7 +126,7 @@ bool SendspinMcImageSlot::decode_frame_(const uint8_t *data, size_t length, cons
   }
 
   // A decode that asked for other dimensions had the buffer taken away from it, so it painted
-  // nothing (or stopped partway). JPEG and BMP report that as an error above; PNG carries on
+  // nothing (or stopped partway). JPEG reports that as an error above; PNG carries on
   // regardless, so the frame is dropped here.
   return this->decode_sink_.decoded_into(target);
 }
@@ -163,7 +164,7 @@ void SendspinMcImageSlot::on_display_(uint32_t lateness_ms) {
     // that never reaches the action stalls the slot with nothing in the log. Name the cause after
     // a generous wait. Arming again replaces the previous timeout, so it cannot fire for a frame
     // that was already acked and superseded.
-    this->set_timeout("transition_ack", TRANSITION_ACK_WARNING_MS, [this]() {
+    this->set_timeout(TRANSITION_ACK_TIMEOUT_ID, TRANSITION_ACK_WARNING_MS, [this]() {
       if (this->transition_pending_) {
         ESP_LOGW(TAG,
                  "Slot %u: displayed artwork was never acknowledged; no new artwork will arrive until "

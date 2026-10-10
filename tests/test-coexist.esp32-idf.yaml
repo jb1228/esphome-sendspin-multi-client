@@ -31,9 +31,11 @@ media_source:
 
 switch:
   - platform: sendspin
+    type: enabled
     sendspin_id: sendspin_core
     name: Native Enabled
   - platform: sendspin_mc
+    type: enabled
     sendspin_mc_id: sendspin_mc_artwork
     name: Artwork Enabled
     restore_mode: ALWAYS_OFF
@@ -42,14 +44,14 @@ image:
   - platform: sendspin_mc
     id: coexist_artwork
     sendspin_mc_id: sendspin_mc_artwork
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: coexist_current}
   - platform: sendspin_mc
     id: coexist_player_artwork
     sendspin_mc_id: sendspin_mc_player
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: coexist_player_current}

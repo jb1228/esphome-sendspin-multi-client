@@ -14,56 +14,56 @@ image:
   - platform: sendspin_mc
     id: slot_a_0
     sendspin_mc_id: artwork_a
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_a_0}
   - platform: sendspin_mc
     id: slot_b_0
     sendspin_mc_id: artwork_b
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_b_0}
   - platform: sendspin_mc
     id: slot_a_1
     sendspin_mc_id: artwork_a
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_a_1}
   - platform: sendspin_mc
     id: slot_b_1
     sendspin_mc_id: artwork_b
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_b_1}
   - platform: sendspin_mc
     id: slot_a_2
     sendspin_mc_id: artwork_a
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_a_2}
   - platform: sendspin_mc
     id: slot_b_2
     sendspin_mc_id: artwork_b
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_b_2}
   - platform: sendspin_mc
     id: slot_a_3
     sendspin_mc_id: artwork_a
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_a_3}
   - platform: sendspin_mc
     id: slot_b_3
     sendspin_mc_id: artwork_b
-    format: BMP
+    format: PNG
     type: RGB565
     resize: 16x16
     current_image: {id: current_b_3}

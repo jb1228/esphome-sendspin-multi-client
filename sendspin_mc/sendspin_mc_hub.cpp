@@ -27,6 +27,26 @@ static const char *const TAG = "sendspin_mc.hub";
 
 namespace {
 
+// The reason passed to on_pairing_failed automations, in the protocol's own spelling.
+StringRef pair_abort_reason_to_string(sendspin::SendspinPairAbortReason reason) {
+  using sendspin::SendspinPairAbortReason;
+  switch (reason) {
+    case SendspinPairAbortReason::ATTEMPT_TIMEOUT:
+      return StringRef::from_lit("attempt_timeout");
+    case SendspinPairAbortReason::CONCURRENT_ATTEMPT:
+      return StringRef::from_lit("concurrent_attempt");
+    case SendspinPairAbortReason::METHOD_NOT_SUPPORTED:
+      return StringRef::from_lit("method_not_supported");
+    case SendspinPairAbortReason::PAIRING_CODE_MISMATCH:
+      return StringRef::from_lit("pairing_code_mismatch");
+    case SendspinPairAbortReason::USER_CANCELLED:
+      return StringRef::from_lit("user_cancelled");
+    case SendspinPairAbortReason::UNKNOWN:
+      break;
+  }
+  return StringRef::from_lit("unknown");
+}
+
 // Zeroes through a volatile pointer so dead-store elimination cannot drop it.
 void secure_wipe(void *data, size_t len) {
   volatile auto *p = static_cast<volatile uint8_t *>(data);
@@ -143,13 +163,15 @@ void SendspinMcHub::setup() {
   }
 #endif
 
-  // Keep playback available without exposing pairing controls.
-  this->client_->set_unpaired_access_enabled(true);
+  // Set before setup() by codegen; an unpaired access switch sets it later, from its own setup().
+  if (this->unpaired_access_.has_value()) {
+    this->client_->set_unpaired_access_enabled(*this->unpaired_access_);
+  }
 }
 
 void SendspinMcHub::loop() {
-  if (this->enabled_.has_value() && this->enabled_.value() != this->client_->is_started() &&
-      !this->status_has_error()) {
+  if (this->enabled_.has_value() && this->unpaired_access_.has_value() &&
+      this->enabled_.value() != this->client_->is_started() && !this->status_has_error()) {
     if (!this->enabled_.value()) {
       this->client_->stop();
     } else if (!this->client_->start()) {
@@ -188,10 +210,14 @@ void SendspinMcHub::dump_config() {
                 "  Manufacturer: %s\n"
                 "  Model: %s\n"
                 "  Firmware version: %s\n"
-                "  Task stack in PSRAM: %s",
+                "  Task stack in PSRAM: %s\n"
+                "  Unpaired access: %s\n"
+                "  Pairing code method: %s",
                 this->client_id_.c_str(), protocol_client_id, this->client_name_.c_str(), this->server_port_,
                 this->control_port_, this->manufacturer_, this->get_product_name_(),
-                this->firmware_version_, YESNO(this->task_stack_in_psram_));
+                this->firmware_version_, YESNO(this->task_stack_in_psram_),
+                YESNO(this->client_ != nullptr && this->client_->is_unpaired_access_enabled()),
+                this->pairing_code_method_());
 
 #ifdef USE_SENDSPIN_MC_ARTWORK
   // Slot indices come from the order the image platform entries were declared, so the log is the
@@ -214,6 +240,23 @@ void SendspinMcHub::set_enabled(bool enabled) {
     return;
   }
   this->enabled_ = enabled;
+}
+
+// THREAD CONTEXT: Main loop
+std::optional<std::string> SendspinMcHub::get_pairing_token() const {
+  if (this->client_ == nullptr) {
+    return std::nullopt;
+  }
+  return this->client_->pairing_token();
+}
+
+// THREAD CONTEXT: Main loop (invoked from codegen before setup(), or from SendspinMc components)
+void SendspinMcHub::set_unpaired_access_enabled(bool enabled) {
+  this->unpaired_access_ = enabled;
+  // Before setup() there is no client yet; setup() applies the stored value.
+  if (this->client_ != nullptr) {
+    this->client_->set_unpaired_access_enabled(enabled);
+  }
 }
 
 #ifdef USE_MDNS_SUPPORTS_ENABLE_DISABLE
@@ -267,6 +310,20 @@ void SendspinMcHub::leave_group() {
   }
 }
 
+// THREAD CONTEXT: Main loop (invoked from the sendspin_mc.confirm_pairing_window action)
+void SendspinMcHub::confirm_pairing_window() {
+  if (this->is_client_running()) {
+    this->client_->confirm_pairing_window();
+  }
+}
+
+// THREAD CONTEXT: Main loop (invoked from the sendspin_mc.cancel_pairing_window action)
+void SendspinMcHub::cancel_pairing_window() {
+  if (this->is_client_running()) {
+    this->client_->cancel_pairing_window();
+  }
+}
+
 const char *SendspinMcHub::get_mac_address_into_buffer(std::span<char, MAC_ADDRESS_PRETTY_BUFFER_SIZE> buf) {
   // The server matches this MAC against the L2 source MAC of the device's multicast traffic.
   // ESP-IDF derives the ethernet MAC as base+3 by default on ESP32-S3, so we cannot use the
@@ -289,6 +346,17 @@ const char *SendspinMcHub::get_mac_address_into_buffer(std::span<char, MAC_ADDRE
   return buf.data();
 }
 
+// Validation rejects a static code together with the dynamic code, so at most one is set.
+const char *SendspinMcHub::pairing_code_method_() const {
+  if (this->pairing_code_display_supported_) {
+    return LOG_STR_LITERAL("dynamic");
+  }
+  if (this->static_pairing_code_ != nullptr) {
+    return LOG_STR_LITERAL("static");
+  }
+  return LOG_STR_LITERAL("none");
+}
+
 const char *SendspinMcHub::get_product_name_() const {
   return this->model_ != nullptr ? this->model_ : App.get_name().c_str();
 }
@@ -307,6 +375,19 @@ sendspin::SendspinClientConfig SendspinMcHub::build_client_config_() {
   config.httpd_psram_stack = this->task_stack_in_psram_;
   config.protocol_task_psram_stack = this->task_stack_in_psram_;
   config.max_pairing_records = SENDSPIN_RECORD_SLOTS;
+
+  // The dynamic code needs a channel and a format. Only digits, since automations get the bare string and could not
+  // tell a QR code token apart.
+  if (this->pairing_code_display_supported_) {
+    config.pairing_code_out_channels = {sendspin::SendspinPairingCodeChannel::DISPLAY};
+    config.pairing_code_formats = {sendspin::SendspinPairingCodeFormat::DIGITS};
+  }
+
+  if (this->static_pairing_code_ != nullptr) {
+    config.static_pairing_code_locations = {"operator"};
+    config.static_pairing_code = this->static_pairing_code_;
+  }
+
 
   return config;
 }
@@ -334,6 +415,25 @@ void SendspinMcHub::on_release_high_performance() {
     wifi::global_wifi_component->release_roaming_suppression();
   }
 #endif
+}
+
+void SendspinMcHub::on_open_pairing_window() { this->open_pairing_window_callbacks_.call(); }
+
+void SendspinMcHub::on_close_pairing_window() { this->close_pairing_window_callbacks_.call(); }
+
+// Only digits are offered, and the library refuses an activation in any other format.
+void SendspinMcHub::on_display_pairing_code(const std::string &code, sendspin::SendspinPairingCodeFormat /*format*/) {
+  this->display_pairing_code_callbacks_.call(code);
+}
+
+void SendspinMcHub::on_clear_pairing_code() { this->clear_pairing_code_callbacks_.call(); }
+
+void SendspinMcHub::on_pairing_succeeded(const std::string &server_id) {
+  this->pairing_succeeded_callbacks_.call(server_id);
+}
+
+void SendspinMcHub::on_pairing_failed(const std::string &server_id, sendspin::SendspinPairAbortReason reason) {
+  this->pairing_failed_callbacks_.call(server_id, pair_abort_reason_to_string(reason));
 }
 
 // --- SendspinNetworkProvider override ---
@@ -429,6 +529,8 @@ void SendspinMcHub::send_client_command(sendspin::SendspinControllerCommand comm
 }
 
 // THREAD CONTEXT: Main loop (ControllerRoleListener override, fired from client_->loop())
+void SendspinMcHub::switch_client() { this->send_client_command(sendspin::SendspinControllerCommand::SWITCH); }
+
 void SendspinMcHub::on_controller_state(const sendspin::ServerStateControllerObject &state) {
   this->controller_state_callbacks_.call(state);
 }

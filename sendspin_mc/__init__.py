@@ -1,10 +1,12 @@
 from dataclasses import dataclass, field
+import logging
+from typing import Any
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
 import esphome.final_validate as fv
 from esphome.components import esp32, mdns, network, psram, socket, wifi
-from esphome.components.const import CONF_MANUFACTURER
+from esphome.components.const import CONF_ENABLED, CONF_MANUFACTURER
 from esphome.const import (
     CONF_BUFFER_SIZE,
     CONF_CLIENT_ID,
@@ -24,10 +26,12 @@ from esphome.const import (
 )
 from esphome.core import CORE, ID, coroutine_with_priority
 from esphome.coroutine import CoroPriority
-from esphome.cpp_generator import MockObj, TemplateArgsType
+from esphome.cpp_generator import MockObj
 from esphome.types import ConfigType
 
 from esphome import automation
+
+_LOGGER = logging.getLogger(__name__)
 
 # mdns for autodiscovery
 AUTO_LOAD = ["mdns"]
@@ -44,6 +48,33 @@ CONF_FIRMWARE_VERSION = "firmware_version"
 # falling back, so reject it instead of silently substituting the fallback. The 127 byte cap keeps
 # the length prefix of a protobuf string field to a single byte, matching `esphome: project:`.
 DEVICE_INFO_STRING = cv.All(cv.string_strict, cv.Length(min=1), cv.ByteLength(max=127))
+
+CONF_STATIC_PAIRING_CODE = "static_pairing_code"
+CONF_UNPAIRED_ACCESS = "unpaired_access"
+CONF_ON_OPEN_PAIRING_WINDOW = "on_open_pairing_window"
+CONF_ON_CLOSE_PAIRING_WINDOW = "on_close_pairing_window"
+CONF_ON_DISPLAY_PAIRING_CODE = "on_display_pairing_code"
+CONF_ON_CLEAR_PAIRING_CODE = "on_clear_pairing_code"
+CONF_ON_PAIRING_SUCCEEDED = "on_pairing_succeeded"
+CONF_ON_PAIRING_FAILED = "on_pairing_failed"
+
+# A static pairing code is exactly 8 decimal digits.
+STATIC_PAIRING_CODE_DIGITS = 8
+
+
+def _validate_static_pairing_code(value: Any) -> str:
+    # string_strict so leading zeros survive and `!secret` works.
+    value = cv.string_strict(value)
+    if len(value) != STATIC_PAIRING_CODE_DIGITS or not (
+        value.isascii() and value.isdigit()
+    ):
+        raise cv.Invalid(
+            f"{CONF_STATIC_PAIRING_CODE} must be exactly "
+            f"{STATIC_PAIRING_CODE_DIGITS} decimal digits "
+            '(quote the value so leading zeros are preserved, e.g. "01234567")'
+        )
+    return value
+
 
 CONF_DISPLAY_OFFSET = "display_offset"
 CONF_CODECS = "codecs"
@@ -117,10 +148,31 @@ SendspinMcHub = sendspin_mc_ns.class_(
 )
 
 
-SendspinMcSwitchCommandAction = sendspin_mc_ns.class_(
-    "SendspinMcSwitchCommandAction",
-    automation.Action,
-    cg.Parented.template(SendspinMcHub),
+_CALLBACK_AUTOMATIONS = (
+    automation.CallbackAutomation(
+        CONF_ON_OPEN_PAIRING_WINDOW, "add_on_open_pairing_window_callback"
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_CLOSE_PAIRING_WINDOW, "add_on_close_pairing_window_callback"
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_DISPLAY_PAIRING_CODE,
+        "add_on_display_pairing_code_callback",
+        [(cg.std_string, "code")],
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_CLEAR_PAIRING_CODE, "add_on_clear_pairing_code_callback"
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_PAIRING_SUCCEEDED,
+        "add_on_pairing_succeeded_callback",
+        [(cg.std_string, "server_id")],
+    ),
+    automation.CallbackAutomation(
+        CONF_ON_PAIRING_FAILED,
+        "add_on_pairing_failed_callback",
+        [(cg.std_string, "server_id"), (cg.StringRef, "reason")],
+    ),
 )
 
 
@@ -131,6 +183,8 @@ class SendspinMcConfiguration:
     metadata_support: bool = False
     player_support: bool = False
     visualizer_support: bool = False
+    pairing_code_display_support: bool = False
+    switch_types: set[str] = field(default_factory=set)
 
     artwork_preferences: list[ConfigType] = field(default_factory=list)
     player_config: ConfigType | None = None
@@ -185,8 +239,10 @@ def _get_data(hub_id: ID) -> SendspinMcConfiguration:
     return hubs[key]
 
 
-def _get_codegen_data(hub_id: ID) -> SendspinMcConfiguration:
-    """Return role data for a resolved hub, including a single-hub implicit reference."""
+def _get_codegen_data(
+    hub_id: ID, full_config: ConfigType | None = None
+) -> SendspinMcConfiguration:
+    """Return hub data, including a single-hub implicit reference."""
     hubs = _get_all_data().hubs
     data = hubs.setdefault(hub_id.id, SendspinMcConfiguration())
     implicit = hubs.get(None)
@@ -195,12 +251,14 @@ def _get_codegen_data(hub_id: ID) -> SendspinMcConfiguration:
 
     # TEMPORARY DEVIATION: Merge pre-ID-pass role requests for an implicit single-hub parent.
     # Revisit when native validation can associate these requests directly; see DEVIATIONS.md.
-    if len(CORE.config.get(DOMAIN, [])) == 1:
+    if len((CORE.config if full_config is None else full_config).get(DOMAIN, [])) == 1:
         data.artwork_support |= implicit.artwork_support
         data.controller_support |= implicit.controller_support
         data.metadata_support |= implicit.metadata_support
         data.player_support |= implicit.player_support
         data.visualizer_support |= implicit.visualizer_support
+        data.pairing_code_display_support |= implicit.pairing_code_display_support
+        data.switch_types |= implicit.switch_types
         if data.player_config is None:
             data.player_config = implicit.player_config
     return data
@@ -229,6 +287,16 @@ def request_player_support(hub_id: ID) -> None:
 def request_visualizer_support(hub_id: ID) -> None:
     """Request visualizer role support for Sendspin."""
     _get_data(hub_id).visualizer_support = True
+
+
+def request_pairing_code_display_support(hub_id: ID) -> None:
+    """Mark that this hub can emit a dynamic pairing code."""
+    _get_data(hub_id).pairing_code_display_support = True
+
+
+def request_switch(hub_id: ID, switch_type: str) -> None:
+    """Mark that a switch drives this hub's matching setting."""
+    _get_data(hub_id).switch_types.add(switch_type)
 
 
 def register_artwork_preference(hub_id: ID, config: ConfigType) -> int:
@@ -294,6 +362,23 @@ CONFIG_SCHEMA = cv.All(
             cv.Optional(CONF_MANUFACTURER): DEVICE_INFO_STRING,
             cv.Optional(CONF_MODEL): DEVICE_INFO_STRING,
             cv.Optional(CONF_FIRMWARE_VERSION): DEVICE_INFO_STRING,
+            cv.Optional(CONF_STATIC_PAIRING_CODE): cv.sensitive(
+                _validate_static_pairing_code
+            ),
+            # No default: the unpaired access switch rejects this key when it is set.
+            cv.Optional(CONF_UNPAIRED_ACCESS): cv.boolean,
+            cv.Optional(CONF_ON_OPEN_PAIRING_WINDOW): automation.validate_automation(
+                {}
+            ),
+            cv.Optional(CONF_ON_CLOSE_PAIRING_WINDOW): automation.validate_automation(
+                {}
+            ),
+            cv.Optional(CONF_ON_DISPLAY_PAIRING_CODE): automation.validate_automation(
+                {}
+            ),
+            cv.Optional(CONF_ON_CLEAR_PAIRING_CODE): automation.validate_automation({}),
+            cv.Optional(CONF_ON_PAIRING_SUCCEEDED): automation.validate_automation({}),
+            cv.Optional(CONF_ON_PAIRING_FAILED): automation.validate_automation({}),
         }
     ),
     cv.only_on_esp32,
@@ -303,10 +388,48 @@ CONFIG_SCHEMA = cv.All(
 )
 
 
+def _offers_dynamic_pairing_code(
+    config: ConfigType, full_config: ConfigType | None = None
+) -> bool:
+    """Whether the device can show a dynamic pairing code, so dynamic_pairing_code is advertised."""
+    return bool(
+        config.get(CONF_ON_DISPLAY_PAIRING_CODE)
+        or _get_codegen_data(config[CONF_ID], full_config).pairing_code_display_support
+    )
+
+
+def _has_pairing_method(
+    config: ConfigType, full_config: ConfigType | None = None
+) -> bool:
+    """Whether the config gives a server any way to pair with the device."""
+    return CONF_STATIC_PAIRING_CODE in config or _offers_dynamic_pairing_code(
+        config, full_config
+    )
+
+
 def _final_validate(config: ConfigType) -> ConfigType:
     """Reject identity and TCP port collisions before code generation."""
     full_config = fv.full_config.get()
     hubs = full_config[DOMAIN]
+
+    dynamic_code = _offers_dynamic_pairing_code(config, full_config)
+    # The protocol allows only one pairing code method.
+    if dynamic_code and CONF_STATIC_PAIRING_CODE in config:
+        raise cv.Invalid(
+            f"'{CONF_STATIC_PAIRING_CODE}' cannot be used with a dynamic pairing code "
+            f"({CONF_ON_DISPLAY_PAIRING_CODE} or a pairing_code text sensor), since only "
+            "one pairing code method can be offered",
+            path=[CONF_STATIC_PAIRING_CODE],
+        )
+    if not config.get(CONF_UNPAIRED_ACCESS, True) and not _has_pairing_method(
+        config, full_config
+    ):
+        _LOGGER.warning(
+            "'%s' is off but there is no pairing method (%s or a dynamic pairing code), so no "
+            "new server can pair with this device",
+            CONF_UNPAIRED_ACCESS,
+            CONF_STATIC_PAIRING_CODE,
+        )
 
     # This hook runs once per MULTI_CONF entry. Perform the aggregate check once.
     if config[CONF_ID].id != hubs[0][CONF_ID].id:
@@ -371,33 +494,38 @@ def _request_controller_role(config: ConfigType) -> ConfigType:
     return config
 
 
+# Selects the hub. sendspin.switch adds the controller role it needs; the pairing window actions need no role.
+SENDSPIN_HUB_ACTION_SCHEMA = automation.maybe_simple_id(
+    cv.Schema(
+        {
+            cv.GenerateID(): cv.use_id(SendspinMcHub),
+        }
+    )
+)
+
 SENDSPIN_SIMPLE_ACTION_SCHEMA = cv.All(
-    automation.maybe_simple_id(
-        cv.Schema(
-            {
-                cv.GenerateID(): cv.use_id(SendspinMcHub),
-            }
-        )
-    ),
-    _request_controller_role,
+    SENDSPIN_HUB_ACTION_SCHEMA, _request_controller_role
 )
 
 
-@automation.register_action(
+automation.register_apply_action(
     "sendspin_mc.switch",
-    SendspinMcSwitchCommandAction,
     SENDSPIN_SIMPLE_ACTION_SCHEMA,
-    synchronous=True,
+    automation.ApplyCall("switch_client()"),
 )
-async def sendspin_switch_to_code(
-    config: ConfigType,
-    action_id: ID,
-    template_arg: cg.TemplateArguments,
-    args: TemplateArgsType,
-):
-    var = cg.new_Pvariable(action_id, template_arg)
-    await cg.register_parented(var, config[CONF_ID])
-    return var
+
+
+automation.register_apply_action(
+    "sendspin_mc.confirm_pairing_window",
+    SENDSPIN_HUB_ACTION_SCHEMA,
+    automation.ApplyCall("confirm_pairing_window()"),
+)
+
+automation.register_apply_action(
+    "sendspin_mc.cancel_pairing_window",
+    SENDSPIN_HUB_ACTION_SCHEMA,
+    automation.ApplyCall("cancel_pairing_window()"),
+)
 
 
 # TEMPORARY DEVIATION: Reconcile shared role flags after native codegen to preserve MC roles.
@@ -459,12 +587,20 @@ async def to_code(config: ConfigType) -> None:
         if value:
             cg.add(setter(value))
 
-    # A switch controls only its parent. Hubs without one start enabled.
-    if not any(
-        item.get("platform") == DOMAIN and item[CONF_SENDSPIN_MC_ID] == config[CONF_ID]
-        for item in CORE.config.get("switch", [])
-    ):
+    if (code := config.get(CONF_STATIC_PAIRING_CODE)) is not None:
+        cg.add(var.set_static_pairing_code(code))
+
+    # The client starts once both are set: here, or by the switch that drives the setting.
+    switch_types = _get_codegen_data(config[CONF_ID]).switch_types
+    if CONF_ENABLED not in switch_types:
         cg.add(var.set_enabled(True))
+    if CONF_UNPAIRED_ACCESS not in switch_types:
+        cg.add(var.set_unpaired_access_enabled(config.get(CONF_UNPAIRED_ACCESS, True)))
+
+    if _offers_dynamic_pairing_code(config):
+        cg.add(var.set_pairing_code_display_supported(True))
+
+    await automation.build_callback_automations(var, config, _CALLBACK_AUTOMATIONS)
 
     if mdns.request_service_enable_disable():
         mdns_var = await cg.get_variable(CORE.config[CONF_MDNS][CONF_ID])

@@ -1,16 +1,19 @@
 #include "sendspin_mc_text_sensor.h"
 
-#if defined(USE_ESP_IDF) && defined(USE_SENDSPIN_MC_METADATA) && defined(USE_TEXT_SENSOR)
+#if defined(USE_ESP_IDF) && defined(USE_TEXT_SENSOR)
 
+#ifdef USE_SENDSPIN_MC_METADATA
 #include <sendspin/metadata_role.h>
+#endif
 
 #include <string>
 
 namespace esphome::sendspin_mc {
 
-static const char *const TAG = "sendspin_mc.text_sensor";
+ESPHOME_LOG_TAG(TAG, "sendspin_mc.text_sensor");
 
-void SendspinMcTextSensor::dump_config() { LOG_TEXT_SENSOR("", "Sendspin", this); }
+#ifdef USE_SENDSPIN_MC_METADATA
+void SendspinMcTextSensor::dump_config() { LOG_TEXT_SENSOR("", "Sendspin MC", this); }
 
 // A field is nullopt when the server has not provided it or has explicitly cleared it. Both mean there is nothing to
 // show, so return the empty string and let the caller publish it; returning early would leave the previous track's
@@ -49,6 +52,16 @@ void SendspinMcTextSensor::publish_if_changed_(const char *value) {
   if (this->get_raw_state() != value) {
     this->publish_state(value);
   }
+}
+#endif  // USE_SENDSPIN_MC_METADATA
+
+void SendspinMcPairingCodeTextSensor::dump_config() { LOG_TEXT_SENSOR("", "Pairing Code", this); }
+
+// THREAD CONTEXT: Main loop. The registered callbacks also fire on the main loop (SendspinMcHub dispatches them from
+// its loop()).
+void SendspinMcPairingCodeTextSensor::setup() {
+  this->parent_->add_on_display_pairing_code_callback([this](const std::string &code) { this->publish_state(code); });
+  this->parent_->add_on_clear_pairing_code_callback([this]() { this->publish_state(""); });
 }
 
 }  // namespace esphome::sendspin_mc

@@ -1,26 +1,49 @@
 #include "sendspin_mc_switch.h"
 
-#ifdef USE_ESP_IDF
+#if defined(USE_ESP_IDF) && defined(USE_SENDSPIN_MC_SWITCH)
 
 #include "esphome/core/log.h"
+#include "esphome/core/preferences.h"
 
 namespace esphome::sendspin_mc {
 
-static const char *const TAG = "sendspin_mc.switch";
+ESPHOME_LOG_TAG(TAG, "sendspin_mc.switch");
 
-void SendspinMcSwitch::setup() {
+// --- SendspinMcEnabledSwitch ---
+
+void SendspinMcEnabledSwitch::setup() {
   // The hub waits for this request, so a restore mode without a state still has to answer.
   this->control(this->get_initial_state_with_restore_mode().value_or(true));
 }
 
-void SendspinMcSwitch::dump_config() { LOG_SWITCH("", "Sendspin Switch", this); }
+void SendspinMcEnabledSwitch::dump_config() { LOG_SWITCH("", "Sendspin MC Enabled Switch", this); }
 
 // THREAD CONTEXT: Main loop
-void SendspinMcSwitch::write_state(bool state) {
+void SendspinMcEnabledSwitch::write_state(bool state) {
   this->parent_->set_enabled(state);
   this->publish_state(state);
 }
 
+// --- SendspinMcUnpairedAccessSwitch ---
+
+void SendspinMcUnpairedAccessSwitch::setup() {
+  // The hub holds the client's first start for this, so a restore mode without a state still has to answer.
+  this->control(this->get_initial_state_with_restore_mode().value_or(true));
+}
+
+void SendspinMcUnpairedAccessSwitch::dump_config() { LOG_SWITCH("", "Sendspin MC Unpaired Access Switch", this); }
+
+// THREAD CONTEXT: Main loop
+void SendspinMcUnpairedAccessSwitch::write_state(bool state) {
+  const bool turning_off = !state && this->has_state() && this->state;
+  this->parent_->set_unpaired_access_enabled(state);
+  this->publish_state(state);
+  // Write the change to flash now: losing it in a power cut would reopen unpaired access.
+  if (turning_off) {
+    global_preferences->sync();
+  }
+}
+
 }  // namespace esphome::sendspin_mc
 
-#endif  // USE_ESP_IDF
+#endif

@@ -1,0 +1,9 @@
+<<: !include test-implicit-parent.esp32-idf.yaml
+
+switch:
+  - platform: sendspin_mc
+    type: enabled
+    name: First Enabled
+  - platform: sendspin_mc
+    type: enabled
+    name: Second Enabled
